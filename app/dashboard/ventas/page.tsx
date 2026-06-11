@@ -169,10 +169,12 @@ export default function Ventas() {
     supabase.auth.getUser().then(({ data }) => {
       if (!data.user) router.push('/login')
     })
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('modo') === 'analisis') setModo('analisis')
     cargarDatos()
     cargarVentasAnalisis()
   }, [])
-
+  
   async function cargarDatos(forzarProyectoId?: string) {
   const { data: cliente } = await supabase.from('clientes').select('id').limit(1).single()
   if (!cliente) return

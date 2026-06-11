@@ -444,12 +444,11 @@ function TabRedirigir({ url }: TabRedirigirProps) {
   useEffect(() => { router.push(url) }, [])
   return null
 }
-
 function TabVentas() {
   const router = useRouter()
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+ <div className="space-y-4">
+<div className="grid grid-cols-2 gap-4">
         <div onClick={() => router.push('/dashboard/ventas')}
           className="bg-white rounded-xl border border-gray-100 p-5 cursor-pointer hover:border-blue-200 hover:bg-blue-50 transition-colors">
           <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center mb-3">
@@ -466,14 +465,22 @@ function TabVentas() {
           <p className="text-sm font-medium text-gray-900">Promociones y publicidad</p>
           <p className="text-xs text-gray-400 mt-1">Registra campañas y correlaciona su impacto</p>
         </div>
+        <div onClick={() => router.push('/dashboard/ventas?modo=analisis')}
+          className="bg-white rounded-xl border border-gray-100 p-5 cursor-pointer hover:border-emerald-200 hover:bg-emerald-50 transition-colors">
+          <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center mb-3">
+            <span className="text-emerald-700 text-lg">📊</span>
+          </div>
+          <p className="text-sm font-medium text-gray-900">Análisis de ventas</p>
+          <p className="text-xs text-gray-400 mt-1">Gráficas, KPIs y comparativos vs año anterior</p>
+        </div>
         <div onClick={() => router.push('/dashboard/precios')}
-          className="bg-white rounded-xl border border-gray-100 p-5 cursor-pointer hover:border-purple-200 hover:bg-purple-50 transition-colors col-span-2">
+          className="bg-white rounded-xl border border-gray-100 p-5 cursor-pointer hover:border-purple-200 hover:bg-purple-50 transition-colors">
           <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center mb-3">
             <span className="text-purple-700 text-lg">💰</span>
           </div>
           <p className="text-sm font-medium text-gray-900">Histórico de precios</p>
           <p className="text-xs text-gray-400 mt-1">Trazabilidad de precio, costo y margen por producto</p>
-        </div>
+         </div>
       </div>
     </div>
   )
