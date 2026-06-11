@@ -4,8 +4,46 @@ import { supabase } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell, ReferenceLine
+  ResponsiveContainer, ReferenceLine
 } from 'recharts'
+
+type Producto = {
+  id: string
+  nombre: string
+  sku?: string | null
+  categoria?: string | null
+  precio?: number | null
+  costo?: number | null
+  aplica_inventario?: boolean | null
+}
+
+type VentaMatrixRow = {
+  id?: string
+  producto_id: string
+  periodo_fecha?: string | null
+  pz_4sem?: number | null
+  ing_4sem?: number | null
+  pz_13sem?: number | null
+  ing_3m?: number | null
+  costo_3m?: number | null
+  pz_3m?: number | null
+  frec_3m?: number | null
+  ing_3m_ant?: number | null
+}
+
+type InventarioRow = {
+  id: string
+  producto_id: string
+  fecha: string
+  disponible?: number | null
+}
+
+type InventarioPendienteRow = {
+  id?: string
+  producto_id: string
+  en_transito?: number | null
+  ordenado?: number | null
+}
 
 function fechaHaceNSemanas(n: number) {
   const d = new Date(); d.setDate(d.getDate() - n * 7); return d.toISOString().split('T')[0]
@@ -60,11 +98,11 @@ const COLORES_CLASE: Record<string, string> = {
 }
 
 export default function Matriz() {
-  const [proyectoId, setProyectoId]   = useState(null)
-  const [productos,  setProductos]    = useState([])
-  const [ventas,     setVentas]       = useState([])
-  const [inventario, setInventario]   = useState([])
-  const [invPend,    setInvPend]      = useState([])
+  const [proyectoId, setProyectoId]   = useState<string | null>(null)
+  const [productos,  setProductos]    = useState<Producto[]>([])
+  const [ventas,     setVentas]       = useState<VentaMatrixRow[]>([])
+  const [inventario, setinventario]   = useState<InventarioRow[]>([])
+  const [invPend,    setInvPend]      = useState<InventarioPendienteRow[]>([])
   const [loading,    setLoading]      = useState(true)
   const [vista,      setVista]        = useState<'matriz'|'bcg'|'tendencia'>('matriz')
   const [filtroClase,    setFiltroClase]    = useState('Todos')
@@ -98,10 +136,10 @@ export default function Matriz() {
     supabase.from('inventario_pendiente').select('*').eq('proyecto_id', pid),
   ])
 
-  setProductos(prods || [])
-  setVentas(vMatrix || [])
-  setInventario(inv || [])
-  setInvPend(pend || [])
+  setProductos((prods || []) as Producto[])
+  setVentas((vMatrix || []) as VentaMatrixRow[])
+  setinventario((inv || []) as InventarioRow[])
+  setInvPend((pend || []) as InventarioPendienteRow[])
   setLoading(false)
 }
  
@@ -113,18 +151,18 @@ export default function Matriz() {
   console.log('Total ventas cargadas:', ventas.length)
   console.log('hace4sem:', hace4sem)
   console.log('hace3meses:', hace3meses)
-  console.log('Ejemplo ventas recientes:', ventas.filter(v => v.periodo_fecha >= hace4sem).slice(0,3))
+  console.log('Ejemplo ventas recientes:', ventas.filter((v) => (v.periodo_fecha ?? '') >= hace4sem).slice(0,3))
 
-const matrizRaw = productos.map(prod => {
-  const v = ventas.find(v => v.producto_id === prod.id) || {}
-  const pzRec    = v.pz_4sem   || 0
-  const ingRec   = v.ing_4sem  || 0
-  const pzRot    = v.pz_13sem  || 0
-  const ing3m    = v.ing_3m    || 0
-  const costo3m  = v.costo_3m  || 0
-  const pz3m     = v.pz_3m     || 0
-  const frec3m   = v.frec_3m   || 0
-  const ing3mAnt = v.ing_3m_ant || 0
+const matrizRaw = productos.map((prod) => {
+  const v = ventas.find((venta) => venta.producto_id === prod.id)
+  const pzRec    = v?.pz_4sem    ?? 0
+  const ingRec   = v?.ing_4sem   ?? 0
+  const pzRot    = v?.pz_13sem   ?? 0
+  const ing3m    = v?.ing_3m     ?? 0
+  const costo3m  = v?.costo_3m   ?? 0
+  const pz3m     = v?.pz_3m      ?? 0
+  const frec3m   = v?.frec_3m    ?? 0
+  const ing3mAnt = v?.ing_3m_ant ?? 0
   const tendencia = ing3mAnt > 0 ? ((ing3m - ing3mAnt) / ing3mAnt) * 100 : ing3m > 0 ? 100 : 0
   const margenPct = ing3m > 0 ? ((ing3m - costo3m) / ing3m) * 100 : 0
   const invRecs = inventario.filter(i => i.producto_id === prod.id)
@@ -208,7 +246,7 @@ const matrizRaw = productos.map(prod => {
       { header:'Acción recomendada', key:'accion', width:50 },
     ]
     const hRow = ws.getRow(1)
-    hRow.eachCell(cell => {
+    hRow.eachCell((cell: any) => {
       cell.font = fBl
       cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF'+AZUL_OSC} }
       cell.alignment = center
@@ -222,7 +260,7 @@ const matrizRaw = productos.map(prod => {
         p.dispAct, p.enTrans, p.ordenado, p.accion,
       ])
       const fill = { type:'pattern' as const, pattern:'solid' as const, fgColor:{argb: i%2===0 ? 'FF'+AZUL_CLAR : 'FF'+GRIS} }
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fN; cell.fill = fill; cell.alignment = left })
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fN; cell.fill = fill; cell.alignment = left })
       row.height = 18
     })
     const buf = await wb.xlsx.writeBuffer()
@@ -244,7 +282,7 @@ const matrizRaw = productos.map(prod => {
         <span className="text-gray-200">/</span>
         <button onClick={() => router.push('/dashboard/ventas')} className="text-xs text-gray-400 hover:text-gray-600">Ventas</button>
         <span className="text-gray-200">/</span>
-        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">Inventario</button>
+        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">inventario</button>
         <span className="text-gray-200">/</span>
         <p className="text-sm font-medium text-gray-900">Matriz de Datos</p>
       </div>
@@ -530,7 +568,7 @@ const matrizRaw = productos.map(prod => {
                           name="Margen %"
                           type="number"
                           domain={['auto','auto']}
-                          tickFormatter={v => `${v.toFixed(0)}%`}
+                          tickFormatter={(v: number) => `${v.toFixed(0)}%`}
                           tick={{fontSize:10, fill:'#64748b'}}
                           label={{value:'Margen %', position:'insideBottom', offset:-10, style:{fontSize:11, fill:'#64748b'}}}
                         />
@@ -558,7 +596,8 @@ const matrizRaw = productos.map(prod => {
                         />
                         <Tooltip
                           cursor={{strokeDasharray:'3 3'}}
-                          content={({ payload }) => {
+                          content={(props: any) => {
+                            const { payload } = props
                             if (!payload?.length) return null
                             const d = payload[0]?.payload
                             if (!d) return null
@@ -610,10 +649,10 @@ const matrizRaw = productos.map(prod => {
                   {/* Conteo por cuadrante */}
                   <div className="grid grid-cols-4 gap-3 mt-4">
                     {[
-                      { label:'⭐ Estrella',     f: (p) => p.margenPct >= avgMargen && p.pzRec >= avgVentas, bg:'bg-emerald-50', text:'text-emerald-700' },
-                      { label:'🐄 Vaca',          f: (p) => p.margenPct <  avgMargen && p.pzRec >= avgVentas, bg:'bg-blue-50',    text:'text-blue-700'    },
-                      { label:'❓ Interrogante', f: (p) => p.margenPct >= avgMargen && p.pzRec <  avgVentas, bg:'bg-amber-50',   text:'text-amber-700'   },
-                      { label:'🐕 Perro',         f: (p) => p.margenPct <  avgMargen && p.pzRec <  avgVentas, bg:'bg-red-50',     text:'text-red-700'     },
+                      { label:'⭐ Estrella',     f: (p: any) => p.margenPct >= avgMargen && p.pzRec >= avgVentas, bg:'bg-emerald-50', text:'text-emerald-700' },
+                      { label:'🐄 Vaca',          f: (p: any) => p.margenPct <  avgMargen && p.pzRec >= avgVentas, bg:'bg-blue-50',    text:'text-blue-700'    },
+                      { label:'❓ Interrogante', f: (p: any) => p.margenPct >= avgMargen && p.pzRec <  avgVentas, bg:'bg-amber-50',   text:'text-amber-700'   },
+                      { label:'🐕 Perro',         f: (p: any) => p.margenPct <  avgMargen && p.pzRec <  avgVentas, bg:'bg-red-50',     text:'text-red-700'     },
                     ].map(q => {
                       const n = datosBCG.filter(q.f).length
                       return (
@@ -630,10 +669,10 @@ const matrizRaw = productos.map(prod => {
                 {/* Tablas por cuadrante */}
                 <div className="space-y-3">
                   {[
-                    { label:'⭐ Estrella',     desc:'Impulsar, asegurar inventario y activar en promociones.',    f: (p) => p.margenPct >= avgMargen && p.pzRec >= avgVentas, color:'#16a34a' },
-                    { label:'🐄 Vaca',          desc:'Renegociar costo, revisar descuentos y ajustar precio.',     f: (p) => p.margenPct <  avgMargen && p.pzRec >= avgVentas, color:'#2563eb' },
-                    { label:'❓ Interrogante', desc:'Venta consultiva o cruzada, explorar si puede crecer.',       f: (p) => p.margenPct >= avgMargen && p.pzRec <  avgVentas, color:'#d97706' },
-                    { label:'🐕 Perro',         desc:'Evaluar si vale mantener, liquidar o descontinuar.',         f: (p) => p.margenPct <  avgMargen && p.pzRec <  avgVentas, color:'#dc2626' },
+                    { label:'⭐ Estrella',     desc:'Impulsar, asegurar inventario y activar en promociones.',    f: (p: any) => p.margenPct >= avgMargen && p.pzRec >= avgVentas, color:'#16a34a' },
+                    { label:'🐄 Vaca',          desc:'Renegociar costo, revisar descuentos y ajustar precio.',     f: (p: any) => p.margenPct <  avgMargen && p.pzRec >= avgVentas, color:'#2563eb' },
+                    { label:'❓ Interrogante', desc:'Venta consultiva o cruzada, explorar si puede crecer.',       f: (p: any) => p.margenPct >= avgMargen && p.pzRec <  avgVentas, color:'#d97706' },
+                    { label:'🐕 Perro',         desc:'Evaluar si vale mantener, liquidar o descontinuar.',         f: (p: any) => p.margenPct <  avgMargen && p.pzRec <  avgVentas, color:'#dc2626' },
                   ].map(q => {
                     const prods = datosBCG.filter(q.f).sort((a, b) => b.score - a.score)
                     if (!prods.length) return null

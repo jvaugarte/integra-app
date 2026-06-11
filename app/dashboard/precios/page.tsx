@@ -8,6 +8,50 @@ import {
 } from 'recharts'
 import BorradoMasivo from '../../components/BorradoMasivo'
 
+type Producto = {
+  id: string
+  nombre: string
+  sku?: string | null
+  categoria?: string | null
+  precio?: number | null
+  costo?: number | null
+}
+
+type ProductoBorrado = {
+  id: string
+  nombre: string
+  sku?: string
+}
+
+type HistoricoPrecio = {
+  id: string
+  proyecto_id?: string | null
+  producto_id: string
+  fecha: string
+  precio?: number | null
+  costo?: number | null
+  margen_pct?: number | null
+  canal?: string | null
+  motivo?: string | null
+  notas?: string | null
+  productos?: {
+    nombre?: string | null
+    sku?: string | null
+    categoria?: string | null
+  } | null
+}
+
+type ExcelRow = Record<string, unknown>
+
+type ProgresoCarga = {
+  activo: boolean
+  total: number
+  cargadas: number
+  porcentaje: number
+  mensaje: string
+}
+
+
 const MOTIVOS = ['Ajuste de mercado', 'Temporada', 'Promoción', 'Cambio de costo', 'Estrategia comercial', 'Lanzamiento', 'Liquidación', 'Otro']
 const CANALES = ['Menudeo', 'Mayoreo', 'En línea', 'Canal preferente', 'Exportación', 'Otro']
 
@@ -36,17 +80,17 @@ function normalizarNumero(valor: any) {
 }
 
 export default function Precios() {
-  const [proyectoId, setProyectoId] = useState(null)
-  const [productos,  setProductos]  = useState([])
-  const [historial,  setHistorial]  = useState([])
+  const [proyectoId, setProyectoId] = useState<string | null>(null)
+  const [productos,  setProductos]  = useState<Producto[]>([])
+  const [historial,  setHistorial]  = useState<HistoricoPrecio[]>([])
   const [loading,    setLoading]    = useState(false)
   const [guardado,   setGuardado]   = useState(false)
-  const [modo,       setModo]       = useState('manual')
-  const [preview,    setPreview]    = useState([])
-  const [pendingRows,setPendingRows]= useState([])
+  const [modo,       setModo]       = useState<'manual' | 'excel' | 'trazabilidad'>('manual')
+  const [preview,    setPreview]    = useState<ExcelRow[]>([])
+  const [pendingRows,setPendingRows]= useState<ExcelRow[]>([])
   const [errores,    setErrores]    = useState<string[]>([])
   const [showErrores,setShowErrores]= useState(false)
-  const [progreso,   setProgreso]   = useState({ activo:false, total:0, cargadas:0, porcentaje:0, mensaje:'' })
+  const [progreso,   setProgreso]   = useState<ProgresoCarga>({ activo:false, total:0, cargadas:0, porcentaje:0, mensaje:'' })
 
   // Filtros vista
   const [prodFiltro,   setProdFiltro]   = useState('todos')
@@ -68,7 +112,7 @@ export default function Precios() {
     cargarDatos()
   }, [])
 
-  async function cargarDatos(pid?: string) {
+  async function cargarDatos(pid?: string | null) {
     const { data: cliente } = await supabase.from('clientes').select('id').limit(1).single()
     if (!cliente) return
     const { data: proyecto } = await supabase.from('proyectos').select('id').eq('cliente_id', cliente.id).limit(1).single()
@@ -78,13 +122,13 @@ export default function Precios() {
 
     const { data: prods } = await supabase.from('productos').select('id, nombre, sku, categoria, precio, costo')
       .eq('proyecto_id', id).eq('activo', true).order('nombre')
-    setProductos(prods || [])
+    setProductos((prods || []) as Producto[])
 
     const { data: hist } = await supabase.from('historico_precios')
       .select('*, productos!historico_precios_producto_id_fkey(nombre, sku, categoria)')
       .eq('proyecto_id', id)
       .order('fecha', { ascending: false })
-    setHistorial(hist || [])
+    setHistorial((hist || []) as HistoricoPrecio[])
   }
 
   async function guardarPrecio() {
@@ -106,7 +150,7 @@ export default function Precios() {
     setForm({ producto_id: '', fecha: new Date().toISOString().split('T')[0], precio: '', costo: '', canal: '', motivo: '', notas: '' })
     setGuardado(true)
     setTimeout(() => setGuardado(false), 2000)
-    cargarDatos(proyectoId)
+    await cargarDatos(proyectoId)
   }
 
   async function descargarPlantilla() {
@@ -136,7 +180,7 @@ export default function Precios() {
       { header:'Notas',          key:'notas',   width:30 },
     ]
     const hDatos = wsDatos.getRow(1)
-    hDatos.eachCell(cell => {
+    hDatos.eachCell((cell: any) => {
       cell.font = fAzulOsc; cell.fill = fillAzulOsc
       cell.alignment = center
       cell.border = { bottom:{ style:'medium', color:{argb:'FF'+AZUL_MED} } }
@@ -147,7 +191,7 @@ export default function Precios() {
     productos.forEach((p: any, i) => {
       const row = wsDatos.addRow([p.sku || '', fecha, p.precio || '', p.costo || '', '', '', ''])
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, (cell, colNum) => {
+      row.eachCell({ includeEmpty:true }, (cell: any, colNum: number) => {
         cell.font = fNormal; cell.fill = fill
         cell.alignment = colNum === 1 ? left : center
       })
@@ -158,9 +202,9 @@ export default function Precios() {
     const ws = wb.addWorksheet('Instrucciones')
     ws.columns = [{ width:24 }, { width:14 }, { width:14 }, { width:38 }, { width:26 }]
     const addRow = (v: any[], h = 18) => { const row = ws.addRow(v); row.height = h; return row }
-    const merge  = (r1, c1, r2, c2) => ws.mergeCells(r1, c1, r2, c2)
-    const styleRow = (row, font, fill, align = center) =>
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = font; cell.fill = fill; cell.alignment = align })
+    const merge  = (r1: number, c1: number, r2: number, c2: number) => ws.mergeCells(r1, c1, r2, c2)
+    const styleRow = (row: any, font: any, fill: any, align: any = center) =>
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = font; cell.fill = fill; cell.alignment = align })
     let r = 1
 
     const titulo = addRow(['💰  GUÍA DE CARGA DE HISTÓRICO DE PRECIOS — INTEGRA'], 30)
@@ -184,7 +228,7 @@ export default function Precios() {
     cols.forEach((fila, i) => {
       const row = addRow(fila, 22)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} }); r++
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} }); r++
     })
     addRow([],6); r++
 
@@ -200,7 +244,7 @@ export default function Precios() {
     reglas.forEach((fila, i) => {
       const row = addRow(fila, 26); merge(r,2,r,5)
       const fill = i % 2 === 0 ? fillVerdeCl : fillGris
-      row.eachCell({ includeEmpty:true }, (cell, colNum) => {
+      row.eachCell({ includeEmpty:true }, (cell: any, colNum: number) => {
         cell.font = colNum === 1 ? { bold:true, size:10, color:{argb:'FF'+AZUL_OSC}, name:'Arial' } : fNormal
         cell.fill = fill; cell.alignment = left
       }); r++
@@ -212,7 +256,7 @@ export default function Precios() {
     MOTIVOS.forEach((m, i) => {
       const row = addRow([m,'','','',''], 18); merge(r,1,r,5)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); r++
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); r++
     })
     addRow([],6); r++
 
@@ -220,7 +264,7 @@ export default function Precios() {
     const wsRef = wb.addWorksheet('Referencia')
     wsRef.columns = [{ width:18 }, { width:32 }, { width:20 }, { width:14 }, { width:14 }]
     const addRowRef = (v: any[], h = 18) => { const row = wsRef.addRow(v); row.height = h; return row }
-    const mergeRef  = (r1, c1, r2, c2) => wsRef.mergeCells(r1, c1, r2, c2)
+    const mergeRef  = (r1: number, c1: number, r2: number, c2: number) => wsRef.mergeCells(r1, c1, r2, c2)
     let rr = 1
 
     const tituloRef = addRowRef(['📋  SKUs VÁLIDOS PARA HISTÓRICO DE PRECIOS'], 28)
@@ -228,11 +272,11 @@ export default function Precios() {
     tituloRef.getCell(1).fill = fillAzulOsc; tituloRef.getCell(1).alignment = center; rr++
     addRowRef([],6); rr++
     const hRef = addRowRef(['SKU','Nombre del producto','Categoría','Precio actual','Costo actual'], 20)
-    hRef.eachCell({ includeEmpty:true }, cell => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
+    hRef.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
     productos.forEach((p: any, i) => {
       const row = addRowRef([p.sku || '—', p.nombre, p.categoria || '—', p.precio || '—', p.costo || '—'], 18)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
     })
 
     const buffer = await wb.xlsx.writeBuffer()
@@ -242,18 +286,19 @@ export default function Precios() {
     URL.revokeObjectURL(url)
   }
 
-  async function leerArchivo(file) {
+  async function leerArchivo(file: File) {
     if (!proyectoId) return alert('Espera a que cargue el proyecto.')
     const XLSXModule = await import('xlsx')
     const XLSX = XLSXModule.default || XLSXModule
     const reader = new FileReader()
-    reader.onload = async (e) => {
+    reader.onload = async (e: ProgressEvent<FileReader>) => {
+      if (!e.target?.result) return
       const wb = XLSX.read(e.target.result, { type:'array', cellDates:true })
       const sheetName = wb.SheetNames.includes('Datos') ? 'Datos' : wb.SheetNames[0]
       const ws = wb.Sheets[sheetName]
-      const rows = XLSX.utils.sheet_to_json(ws, { defval:'' })
+      const rows = XLSX.utils.sheet_to_json(ws, { defval:'' }) as ExcelRow[]
 
-      const filtradas = rows.filter((row: any) => {
+      const filtradas = rows.filter((row: ExcelRow) => {
         const sku   = String(row.SKU || row.sku || '').trim()
         const precio = row.Precio_Venta ?? row.precio_venta ?? row.Precio ?? row.precio
         return sku && precio !== ''
@@ -264,11 +309,11 @@ export default function Precios() {
       setPreview(filtradas.slice(0,3))
 
       const errs: string[] = []
-      const validas: any[] = []
+      const validas: ExcelRow[] = []
       for (const row of filtradas) {
         const skuOrig = String(row.SKU || row.sku || '').trim()
         const sku = skuOrig.toLowerCase().trim()
-        const prod = productos.find((p: any) => (p.sku || '').toLowerCase() === sku)
+        const prod = productos.find((p: Producto) => (p.sku || '').toLowerCase() === sku)
         if (!prod) { errs.push(`SKU no encontrado: ${skuOrig}`); continue }
         validas.push(row)
       }
@@ -286,7 +331,7 @@ export default function Precios() {
     reader.readAsArrayBuffer(file)
   }
 
-  async function importarPrecios(rows, errsAnteriores: string[] = []) {
+  async function importarPrecios(rows: ExcelRow[], errsAnteriores: string[] = []) {
     setLoading(true)
     setProgreso({ activo:true, total:rows.length, cargadas:0, porcentaje:0, mensaje:'Importando precios...' })
 
@@ -294,7 +339,7 @@ export default function Precios() {
     for (const row of rows) {
       const skuOrig = String(row.SKU || row.sku || '').trim()
       const sku = skuOrig.toLowerCase().trim()
-      const prod = productos.find((p: any) => (p.sku || '').toLowerCase() === sku)
+      const prod = productos.find((p: Producto) => (p.sku || '').toLowerCase() === sku)
       if (!prod) continue
 
       const fecha  = normalizarFecha(row.Fecha ?? row.fecha)
@@ -304,7 +349,7 @@ export default function Precios() {
 
       registros.push({
         proyecto_id: proyectoId,
-        producto_id: (prod as any).id,
+        producto_id: prod.id,
         fecha,
         precio,
         costo,
@@ -340,7 +385,7 @@ export default function Precios() {
   }
 
   // ─── Datos para gráfica y tabla ────────────────────────────────────
-  const histFiltrado = historial.filter((h: any) => {
+  const histFiltrado = historial.filter((h: HistoricoPrecio) => {
     if (prodFiltro !== 'todos' && h.producto_id !== prodFiltro) return false
     if (canalFiltro !== 'todos' && (h.canal || 'Sin canal') !== canalFiltro) return false
     if (añoFiltro !== 'todos' && !h.fecha.startsWith(añoFiltro)) return false
@@ -361,7 +406,7 @@ export default function Precios() {
 
   const datosGrafica = (() => {
     const mapa: Record<string, { label:string, precio:number, costo:number, margen:number, count:number }> = {}
-    histFiltrado.forEach((h: any) => {
+    histFiltrado.forEach((h: HistoricoPrecio) => {
       const label = agruparLabel(h.fecha)
       if (!mapa[label]) mapa[label] = { label, precio:0, costo:0, margen:0, count:0 }
       mapa[label].precio  += h.precio || 0
@@ -377,8 +422,8 @@ export default function Precios() {
     }))
   })()
 
-  const años = [...new Set(historial.map((h: any) => h.fecha?.substring(0,4)))].filter(Boolean).sort().reverse()
-  const canales = [...new Set(historial.map((h: any) => h.canal || 'Sin canal'))].filter(Boolean)
+  const años = [...new Set(historial.map((h: HistoricoPrecio) => h.fecha?.substring(0,4)).filter((a): a is string => Boolean(a)))].sort().reverse()
+  const canales = [...new Set(historial.map((h: HistoricoPrecio) => h.canal || 'Sin canal'))].filter(Boolean)
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -389,7 +434,7 @@ export default function Precios() {
         <span className="text-gray-200">/</span>
         <button onClick={() => router.push('/dashboard/ventas')} className="text-xs text-gray-400 hover:text-gray-600">Ventas</button>
         <span className="text-gray-200">/</span>
-        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">Inventario</button>
+        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">inventario</button>
         <span className="text-gray-200">/</span>
         <p className="text-sm font-medium text-gray-900">Histórico de Precios</p>
       </div>
@@ -413,7 +458,7 @@ export default function Precios() {
         {/* Tabs */}
         <div className="bg-white rounded-xl border border-gray-100 p-2 flex gap-2">
           {[{id:'manual',label:'✏️ Captura manual'},{id:'excel',label:'📂 Subir archivo'},{id:'trazabilidad',label:'📊 Trazabilidad'}].map(t => (
-            <button key={t.id} onClick={() => setModo(t.id)}
+            <button key={t.id} onClick={() => setModo(t.id as 'manual' | 'excel' | 'trazabilidad')}
               className={`flex-1 py-2 text-sm rounded-lg transition-colors ${modo === t.id ? 'bg-emerald-50 text-emerald-700 font-medium' : 'text-gray-400'}`}>
               {t.label}
             </button>
@@ -425,7 +470,19 @@ export default function Precios() {
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
             <div className="flex items-center justify-between">
   <p className="text-sm font-medium text-gray-900">Registrar precio</p>
-  <BorradoMasivo tabla="historico_precios" proyectoId={proyectoId} productos={productos} campoFecha="fecha" onBorrado={() => cargarDatos(proyectoId)}/>
+  {proyectoId && (
+    <BorradoMasivo
+      tabla="historico_precios"
+      proyectoId={proyectoId}
+      productos={productos.map((p): ProductoBorrado => ({
+        id: p.id,
+        nombre: p.nombre,
+        sku: p.sku ?? undefined,
+      }))}
+      campoFecha="fecha"
+      onBorrado={() => cargarDatos(proyectoId)}
+    />
+  )}
 </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -433,7 +490,7 @@ export default function Precios() {
                 <select value={form.producto_id} onChange={e => setForm({...form, producto_id:e.target.value})}
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
                   <option value="">Selecciona un producto</option>
-                  {productos.map((p: any) => <option key={p.id} value={p.id}>{p.nombre} {p.sku ? `(${p.sku})` : ''}</option>)}
+                  {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre} {p.sku ? `(${p.sku})` : ''}</option>)}
                 </select>
               </div>
               <div>
@@ -568,7 +625,7 @@ export default function Precios() {
                 <select value={prodFiltro} onChange={e => setProdFiltro(e.target.value)}
                   className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400">
                   <option value="todos">Todos los productos</option>
-                  {productos.map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                  {productos.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                 </select>
               </div>
               <div>
@@ -621,9 +678,15 @@ export default function Precios() {
                       tickFormatter={v => `${v}%`}
                       label={{value:'Margen %', angle:90, position:'insideRight', offset:10, style:{fontSize:10, fill:'#7c3aed'}}}/>
                     <Tooltip
-                      formatter={(val: number, name: string) =>
-                        name === 'Margen' ? [`${val}%`, 'Margen'] : [`$${val.toLocaleString('es-MX')}`, name]}
-                    />
+  formatter={(val: any, name: any) => {
+    const num = typeof val === 'number' ? val : Number(val ?? 0)
+    const label = String(name)
+
+    return label === 'Margen'
+      ? [`${num}%`, 'Margen']
+      : [`$${num.toLocaleString('es-MX')}`, label]
+  }}
+/>
                     <Legend wrapperStyle={{fontSize:'11px', paddingTop:'8px'}}/>
                     <Bar yAxisId="left" dataKey="Costo"  name="Costo"  stackId="a" fill="#94a3b8" radius={[0,0,0,0]}/>
                     <Bar yAxisId="left" dataKey="Precio" name="Precio" stackId="a" fill="#2563eb" radius={[4,4,0,0]}/>
@@ -659,7 +722,7 @@ export default function Precios() {
                         </tr>
                       </thead>
                       <tbody>
-                        {histFiltrado.map((h: any, i) => (
+                        {histFiltrado.map((h, i) => (
                           <tr key={h.id} className={i%2===0 ? 'bg-blue-50' : 'bg-white'}>
                             <td className="px-3 py-2 text-gray-500">
                               {(() => { const [y,m,d] = h.fecha.split('-'); return `${d}-${m}-${y}` })()}
@@ -669,13 +732,13 @@ export default function Precios() {
                             <td className="px-3 py-2 text-right text-gray-900 font-medium">${h.precio?.toLocaleString('es-MX',{minimumFractionDigits:2})}</td>
                             <td className="px-3 py-2 text-right text-gray-500">{h.costo ? `$${h.costo?.toLocaleString('es-MX',{minimumFractionDigits:2})}` : '—'}</td>
                             <td className="px-3 py-2 text-right">
-                              {h.margen_pct !== null
-                                ? <span className={`font-medium ${h.margen_pct >= 30 ? 'text-emerald-700' : h.margen_pct >= 15 ? 'text-amber-600' : 'text-red-600'}`}>
-                                    {h.margen_pct}%
-                                  </span>
-                                : <span className="text-gray-300">—</span>
-                              }
-                            </td>
+  {typeof h.margen_pct === 'number'
+    ? <span className={`font-medium ${h.margen_pct >= 30 ? 'text-emerald-700' : h.margen_pct >= 15 ? 'text-amber-600' : 'text-red-600'}`}>
+        {h.margen_pct}%
+      </span>
+    : <span className="text-gray-300">—</span>
+  }
+</td>
                             <td className="px-3 py-2 text-center text-gray-500">{h.canal || '—'}</td>
                             <td className="px-3 py-2 text-gray-500">{h.motivo || '—'}</td>
                           </tr>

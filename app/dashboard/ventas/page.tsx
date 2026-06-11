@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import SelectorPeriodo from '../../components/SelectorPeriodo'
 import { useState, useEffect } from 'react'
@@ -8,8 +8,91 @@ import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, L
 import BorradoMasivo from '../../components/BorradoMasivo'
 import * as XLSX from 'xlsx'
 
-function getSemanas(año) {
-  const semanas = []
+type Producto = {
+  id: string
+  nombre: string
+  sku?: string | null
+  SKU?: string | null
+  codigo?: string | null
+  categoria?: string | null
+  precio?: number | null
+  costo?: number | null
+  aplica_inventario?: boolean | null
+  [key: string]: any
+}
+
+type VentaRow = {
+  id: string
+  producto_id: string
+  periodo_tipo?: string | null
+  periodo_fecha: string
+  piezas?: number | null
+  precio_unitario?: number | null
+  costo_unitario?: number | null
+  ingreso_real?: number | null
+  costo_real?: number | null
+  utilidad?: number | null
+  descuento_pct?: number | null
+  tiene_promo?: boolean | null
+  tipo_promo?: string | null
+  productos?: { nombre?: string | null } | null
+  [key: string]: any
+}
+
+type VentaExistente = {
+  id: string
+  producto_id: string
+  periodo_fecha: string
+  periodo_tipo?: string | null
+  [key: string]: any
+}
+
+type VentaAnalisisRow = {
+  proyecto_id?: string | null
+  producto_id?: string | null
+  producto_nombre?: string | null
+  categoria?: string | null
+  anio?: number | string | null
+  mes?: number | string | null
+  semana?: number | string | null
+  dia?: string | null
+  fecha?: string | null
+  periodo_fecha?: string | null
+  semana_inicio?: string | null
+  mes_inicio?: string | null
+  piezas?: number | string | null
+  registros?: number | string | null
+  ingreso_real?: number | string | null
+  costo_real?: number | string | null
+  utilidad?: number | string | null
+  [key: string]: any
+}
+
+type ExcelRow = Record<string, any>
+
+type ProgresoCarga = {
+  activo: boolean
+  total: number
+  cargadas: number
+  porcentaje: number
+  mensaje: string
+}
+
+type SemanaPeriodo = {
+  num: number
+  label: string
+  fecha: string
+}
+
+type MesPeriodo = {
+  label: string
+  fecha: string
+}
+
+
+
+function getSemanas(año: number): SemanaPeriodo[] {
+  const semanas: SemanaPeriodo[] = []
   const fecha = new Date(año, 0, 1)
   while (fecha.getDay() !== 1) fecha.setDate(fecha.getDate() + 1)
   let semana = 1
@@ -17,7 +100,7 @@ function getSemanas(año) {
     const inicio = new Date(fecha)
     const fin = new Date(fecha)
     fin.setDate(fin.getDate() + 6)
-    const fmt = d => d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
+    const fmt = (d: Date) => d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
     semanas.push({
       num: semana,
       label: `Semana ${semana} (${fmt(inicio)} – ${fmt(fin)})`,
@@ -29,7 +112,7 @@ function getSemanas(año) {
   return semanas
 }
 
-function getMeses(año) {
+function getMeses(año: number): MesPeriodo[] {
   return Array.from({ length: 12 }, (_, i) => {
     const d = new Date(año, i, 1)
     return {
@@ -40,25 +123,25 @@ function getMeses(año) {
 }
 
 export default function Ventas() {
-  const [productos, setProductos] = useState([])
-  const [proyectoId, setProyectoId] = useState(null)
-  const [ventas, setVentas] = useState([])
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [proyectoId, setProyectoId] = useState<string | null>(null)
+  const [ventas, setVentas] = useState<VentaRow[]>([])
   const [loading, setLoading] = useState(false)
   const [guardado, setGuardado] = useState(false)
   const [modo, setModo] = useState('manual')
-  const [preview, setPreview] = useState([])
-  const [pendingRows, setPendingRows] = useState([])
-  const [duplicados, setDuplicados] = useState([])
+  const [preview, setPreview] = useState<ExcelRow[]>([])
+  const [pendingRows, setPendingRows] = useState<ExcelRow[]>([])
+  const [duplicados, setDuplicados] = useState<Array<string | VentaExistente>>([])
   const [showConfirm, setShowConfirm] = useState(false)
-  const [ventasExistentesCache, setVentasExistentesCache] = useState([])
-  const [ventasAnalisis, setVentasAnalisis] = useState([])
+  const [ventasExistentesCache, setVentasExistentesCache] = useState<VentaExistente[]>([])
+  const [ventasAnalisis, setVentasAnalisis] = useState<VentaAnalisisRow[]>([])
   const [agrupacion, setAgrupacion] = useState<'producto'|'periodo'|'categoria'>('periodo')
   const [tipoGrafica, setTipoGrafica] = useState<'linea'|'barras'>('barras')
   const [vistaPeriodo, setVistaPeriodo] = useState<'anio'|'mes'|'semana'|'dia'>('semana')
   const [metricasSeleccionadas, setMetricasSeleccionadas] = useState<string[]>(['ingreso'])
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
-  const [progresoCarga, setProgresoCarga] = useState({
+  const [progresoCarga, setProgresoCarga] = useState<ProgresoCarga>({
     activo: false, total: 0, cargadas: 0, porcentaje: 0, mensaje: '',
   })
 
@@ -101,14 +184,14 @@ export default function Ventas() {
 
   const { data: prods } = await supabase.from('productos').select('*')
     .eq('proyecto_id', pid).eq('activo', true).order('nombre')
-  setProductos(prods || [])
+  setProductos((prods || []) as Producto[])
 
   const { data: vs } = await supabase.from('ventas')
     .select('*, productos!ventas_producto_id_fkey(nombre)')
     .eq('proyecto_id', pid)
     .order('periodo_fecha', { ascending: false })
     .limit(20)
-  setVentas(vs || [])
+  setVentas((vs || []) as VentaRow[])
 await cargarVentasAnalisis(pid)
 }
 
@@ -141,20 +224,23 @@ await cargarVentasAnalisis(pid)
   function calcularTotales() {
     const prod = productos.find(p => p.id === form.producto_id)
     if (!prod) return null
-    let ingreso = 0, costoTotal = 0, piezas = 0, descuentoAuto = null
+    let ingreso = 0, costoTotal = 0, piezas = 0, descuentoAuto: string | null = null
+
+    const precioProducto = typeof prod.precio === 'number' ? prod.precio : 0
+    const costoProducto = typeof prod.costo === 'number' ? prod.costo : 0
 
     if (form.modo_registro === 'dinero') {
       if (!form.monto_manual) return null
       ingreso = parseFloat(form.monto_manual)
-      costoTotal = prod.costo || 0
-      if (prod.precio && ingreso < prod.precio) {
-        descuentoAuto = ((prod.precio - ingreso) / prod.precio * 100).toFixed(1)
+      costoTotal = costoProducto
+      if (precioProducto > 0 && ingreso < precioProducto) {
+        descuentoAuto = (((precioProducto - ingreso) / precioProducto) * 100).toFixed(1)
       }
     } else {
       if (!form.piezas) return null
       piezas = parseFloat(form.piezas)
-      ingreso = piezas * prod.precio
-      costoTotal = piezas * (prod.costo || 0)
+      ingreso = piezas * precioProducto
+      costoTotal = piezas * costoProducto
     }
 
     return {
@@ -195,13 +281,29 @@ await cargarVentasAnalisis(pid)
     desde += tamano
   }
 
-  setVentasAnalisis(todas)
+  setVentasAnalisis(todas as VentaAnalisisRow[])
 }
-  function getWeek(d) {
+  function getWeek(d: Date): number {
     const start = new Date(d.getFullYear(), 0, 1)
-    return Math.ceil(((d - start) / 86400000 + start.getDay() + 1) / 7)
+    return Math.ceil(((d.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7)
+  }
+  async function verificarDuplicado(productoId: string, fecha: string) {
+  if (!proyectoId) return []
+
+  const { data, error } = await supabase
+    .from('ventas')
+    .select('id, producto_id, periodo_tipo, periodo_fecha')
+    .eq('proyecto_id', proyectoId)
+    .eq('producto_id', productoId)
+    .eq('periodo_fecha', fecha)
+
+  if (error) {
+    console.error('Error verificando duplicado:', error)
+    return []
   }
 
+  return data || []
+}
   async function guardarVenta(reemplazar = false) {
     if (!form.producto_id) return alert('Selecciona producto')
     if (form.modo_registro === 'piezas' && !form.piezas) return alert('Ingresa las piezas vendidas')
@@ -221,7 +323,13 @@ await cargarVentasAnalisis(pid)
     setLoading(true)
 
     if (reemplazar && duplicados.length > 0) {
-      await supabase.from('ventas').delete().in('id', duplicados.map(d => d.id))
+      const idsDuplicados = duplicados
+  .filter((d): d is VentaExistente => typeof d !== 'string' && !!d?.id)
+  .map(d => d.id)
+
+if (idsDuplicados.length > 0) {
+  await supabase.from('ventas').delete().in('id', idsDuplicados)
+}
     }
 
     const { error } = await supabase.from('ventas').insert({
@@ -230,8 +338,8 @@ await cargarVentasAnalisis(pid)
       periodo_tipo: form.periodo_tipo,
       periodo_fecha: fechaReal,
       piezas: form.modo_registro === 'piezas' ? parseFloat(form.piezas) : null,
-      precio_unitario: prod.precio,
-      costo_unitario: prod.costo || null,
+      precio_unitario: typeof prod.precio === 'number' ? prod.precio : 0,
+      costo_unitario: typeof prod.costo === 'number' ? prod.costo : null,
       ingreso_real: parseFloat(totales.ingreso),
       costo_real: parseFloat(totales.costoTotal),
       utilidad: parseFloat(totales.utilidad),
@@ -345,7 +453,7 @@ await cargarVentasAnalisis(pid)
       { header: 'Periodo_Tipo', key: 'periodo', width: 14 },
     ]
     const hDatos = wsDatos.getRow(1)
-    hDatos.eachCell(cell => {
+    hDatos.eachCell((cell: any) => {
       cell.font = fAzulOsc; cell.fill = fillAzulOsc
       cell.alignment = center
       cell.border = { bottom: { style: 'medium', color: { argb: 'FF' + AZUL_MED } } }
@@ -355,9 +463,9 @@ await cargarVentasAnalisis(pid)
     const ws = wb.addWorksheet('Instrucciones')
     ws.columns = [{ width: 34 }, { width: 13 }, { width: 14 }, { width: 28 }, { width: 32 }]
     const addRow = (v: any[], h = 18) => { const row = ws.addRow(v); row.height = h; return row }
-    const merge  = (r1, c1, r2, c2) => ws.mergeCells(r1, c1, r2, c2)
-    const styleRow = (row, font, fill, align = center) =>
-      row.eachCell({ includeEmpty: true }, (cell) => { cell.font = font; cell.fill = fill; cell.alignment = align })
+    const merge  = (r1: number, c1: number, r2: number, c2: number) => ws.mergeCells(r1, c1, r2, c2)
+    const styleRow = (row: any, font: any, fill: any, align: any = center) =>
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = font; cell.fill = fill; cell.alignment = align })
     let r = 1
 
     const tituloRow = addRow(['GUÍA DE CAPTURA DE VENTAS - INTEGRA Inteligencia Integral'], 30)
@@ -379,7 +487,7 @@ await cargarVentasAnalisis(pid)
     colsData.forEach((fila, i) => {
       const row = addRow(fila, 20)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty: true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} })
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} })
       r++
     })
     const notaRow = addRow(['  * Debes llenar Piezas O Monto_Pesos. Si pones ambos, el sistema usará Monto_Pesos.'], 18)
@@ -415,7 +523,7 @@ await cargarVentasAnalisis(pid)
       const fRow = addRow([`${fmt(lunes)} al ${fmt(domingo)}`, anio, numSem, valorSem, ''], 18)
       merge(r,4,r,5)
       const fillFila = i % 2 === 0 ? fillVerdeCl : fillGris
-      fRow.eachCell({ includeEmpty: false }, (cell, colNum) => {
+      fRow.eachCell({ includeEmpty: false }, (cell: any, colNum: number) => {
         cell.font = colNum === 4 ? fValor : fNormal
         cell.fill = colNum === 4 ? fillVerde : fillFila
         cell.alignment = center
@@ -439,7 +547,7 @@ await cargarVentasAnalisis(pid)
       const mRow = addRow([nombreM, anioM, valorM, '', ''], 18)
       merge(r,3,r,5)
       const fillFila = i % 2 === 0 ? fillAzulClar : fillGris
-      mRow.eachCell({ includeEmpty: false }, (cell, colNum) => {
+      mRow.eachCell({ includeEmpty: false }, (cell: any, colNum: number) => {
         cell.font = colNum === 3 ? fValor : fNormal
         cell.fill = colNum === 3 ? fillAzulMed : fillFila
         cell.alignment = center
@@ -468,24 +576,26 @@ await cargarVentasAnalisis(pid)
     URL.revokeObjectURL(url)
   }
 
-  async function leerArchivoVentas(file) {
+  async function leerArchivoVentas(file: File) {
     if (!proyectoId) return alert('Espera a que cargue el proyecto antes de subir el archivo.')
     if (!productos.length) return alert('No hay productos cargados. Revisa tu catálogo antes de importar ventas.')
 
     const reader = new FileReader()
 
     reader.onload = async (e) => {
-      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: false })
+      const result = e.target?.result
+      if (!result) return
+      const wb = XLSX.read(result, { type: 'array', cellDates: false })
       const sheetName = wb.SheetNames.includes('Datos') ? 'Datos' : wb.SheetNames[0]
       const ws = wb.Sheets[sheetName]
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+      const rows = XLSX.utils.sheet_to_json<ExcelRow>(ws, { defval: '' })
       console.log('Total filas leídas:', rows.length)
       console.log('Fila 1 completa:', rows[0])
       console.log('Fila 2 completa:', rows[1])
 
 
 
-      const rowsFiltradas = rows.filter((row: any) => {
+      const rowsFiltradas = rows.filter((row: ExcelRow) => {
         const sku   = obtenerValor(row, ['SKU', 'Producto'])
         const fecha = obtenerValor(row, ['Fecha'])
         const piezas = obtenerValor(row, ['Piezas'])
@@ -540,10 +650,10 @@ await cargarVentasAnalisis(pid)
         .eq('proyecto_id', proyectoId)
         .in('producto_id', productosIds)
 
-      setVentasExistentesCache(ventasExistentes || [])
+      setVentasExistentesCache((ventasExistentes || []) as VentaExistente[])
 
       const setExistentes = new Set(
-        (ventasExistentes || []).map(v => `${v.producto_id}__${v.periodo_fecha}`)
+        (ventasExistentes || []).map((v: any) => `${v.producto_id}__${v.periodo_fecha}`)
       )
 
       const dups: string[] = []
@@ -568,7 +678,7 @@ await cargarVentasAnalisis(pid)
     reader.readAsArrayBuffer(file)
   }
 
-    async function importarVentas(rows, reemplazar, ventasCache = ventasExistentesCache) {
+    async function importarVentas(rows: ExcelRow[], reemplazar: boolean, ventasCache: VentaExistente[] = ventasExistentesCache) {
       if (!proyectoId) return alert('No se encontró el proyecto activo.')
 
       setShowConfirm(false)
@@ -594,16 +704,22 @@ await cargarVentasAnalisis(pid)
         if ((piezas === null || piezas === undefined) && (montoManual === null || montoManual === undefined)) { errores.push(`SKU ${skuOriginal}: falta Piezas o Monto_Pesos`); continue }
         if (!['dia','semana','mes'].includes(periodTipo)) { errores.push(`SKU ${skuOriginal}: Periodo_Tipo inválido (${periodTipo})`); continue }
 
-        let ingreso = 0, costoTotal = 0, descuentoAuto = null
+        let ingreso = 0
+        let costoTotal = 0
+        let descuentoAuto: number | null = null
+        const precioProducto = typeof prod.precio === 'number' ? prod.precio : 0
+        const costoProducto = typeof prod.costo === 'number' ? prod.costo : 0
+        const piezasNum = typeof piezas === 'number' ? piezas : 0
+
         if (montoManual !== null) {
           ingreso    = montoManual
-          costoTotal = piezas !== null ? piezas * (prod.costo || 0) : (prod.costo || 0)
-          if (prod.precio && piezas && montoManual < piezas * prod.precio) {
-            descuentoAuto = parseFloat((((piezas * prod.precio) - montoManual) / (piezas * prod.precio) * 100).toFixed(1))
+          costoTotal = piezas !== null ? piezasNum * costoProducto : costoProducto
+          if (precioProducto > 0 && piezasNum > 0 && montoManual < piezasNum * precioProducto) {
+            descuentoAuto = parseFloat((((piezasNum * precioProducto) - montoManual) / (piezasNum * precioProducto) * 100).toFixed(1))
           }
         } else {
-          ingreso    = piezas * prod.precio
-          costoTotal = piezas * (prod.costo || 0)
+          ingreso    = piezasNum * precioProducto
+          costoTotal = piezasNum * costoProducto
         }
 
       registros.push({
@@ -612,8 +728,8 @@ await cargarVentasAnalisis(pid)
         periodo_tipo: periodTipo,
         periodo_fecha: fecha,
         piezas,
-        precio_unitario: prod.precio,
-        costo_unitario:  prod.costo || null,
+        precio_unitario: precioProducto,
+        costo_unitario:  typeof prod.costo === 'number' ? prod.costo : null,
         ingreso_real:  parseFloat(ingreso.toFixed(2)),
         costo_real:    parseFloat(costoTotal.toFixed(2)),
         utilidad:      parseFloat((ingreso - costoTotal).toFixed(2)),
@@ -690,7 +806,7 @@ const { data: vs, error: errorVentas } = await supabase
 console.log('proyectoId usado:', proyectoId)
 console.log('ventas resultado:', vs)
 console.log('error aventas:', errorVentas)
-setVentas(vs || [])
+setVentas((vs || []) as VentaRow[])
 }
 
 function toggleMetrica(metrica: string) {
@@ -715,7 +831,7 @@ return (
         <span className="text-gray-200">/</span>
         <p className="text-sm font-medium text-gray-900">Registrar ventas</p>
         <span className="text-gray-200">/</span>
-        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">Inventario</button>
+        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">inventario</button>
 <span className="text-gray-200">/</span>
 <button onClick={() => router.push('/dashboard/promociones')} className="text-xs text-gray-400 hover:text-gray-600">Promociones</button>
       </div>
@@ -770,15 +886,15 @@ return (
               <p className="text-sm font-medium text-gray-900">Nueva venta</p>
               <BorradoMasivo
                 tabla="ventas"
-                proyectoId={proyectoId}
-                productos={productos}
+                proyectoId={proyectoId || ''}
+                productos={productos.map((p) => ({ id: p.id, nombre: p.nombre, sku: p.sku ?? undefined }))}
                 campoFecha="periodo_fecha"
-                onBorrado={() => cargarDatos(proyectoId)}
+                onBorrado={() => proyectoId && cargarDatos(proyectoId)}
               />
             </div>
             <div className="mb-4">
               <label className="text-xs text-gray-500 block mb-2">Período de registro</label>
-              <SelectorPeriodo onChange={p => setForm({ ...form, periodo_tipo: p.tipo, periodo_fecha: p.fecha })} />
+              <SelectorPeriodo onChange={(p: any) => setForm({ ...form, periodo_tipo: p.tipo, periodo_fecha: p.fecha })} />
             </div>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
@@ -850,10 +966,10 @@ return (
                 <div className="flex gap-2">
                 <BorradoMasivo
                   tabla="ventas"
-                  proyectoId={proyectoId}
-                  productos={productos}
+                  proyectoId={proyectoId || ''}
+                  productos={productos.map((p) => ({ id: p.id, nombre: p.nombre, sku: p.sku ?? undefined }))}
                   campoFecha="periodo_fecha"
-                  onBorrado={() => cargarDatos(proyectoId)}
+                  onBorrado={() => proyectoId && cargarDatos(proyectoId)}
                 />
                 <button onClick={descargarPlantilla}
                   className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors">
@@ -1287,8 +1403,10 @@ return (
     const row = datosGrafica[index]
     if (!row) return null
 
-    const actual = Number(row[metrica] || 0)
-    const anterior = Number(row[`${metrica}_anterior`] || 0)
+    const rowMetricas = row as Record<string, any>
+
+const actual = Number(rowMetricas[metrica] || 0)
+const anterior = Number(rowMetricas[`${metrica}_anterior`] || 0)
     const diferencia = calcularDiferenciaPct(actual, anterior)
 
     const positivo = diferencia > 0
@@ -1496,11 +1614,13 @@ return (
   setAñosFiltro(nuevo)
   // Seleccionar todos los meses disponibles del año
   const mesesDelAnio = [...new Set(
-    ventasAnalisis
-      .filter(v => nuevo.includes(v.anio))
-      .map(v => v.mes - 1)
-  )].sort((a,b) => a-b)
-  setMesesFiltro(mesesDelAnio)
+  ventasAnalisis
+    .filter((v) => nuevo.includes(Number(v.anio)))
+    .map((v) => Number(v.mes) - 1)
+    .filter((m) => Number.isFinite(m) && m >= 0)
+)].sort((a, b) => a - b)
+
+setMesesFiltro(mesesDelAnio)
   setSemanasFiltro([])
 }}
         className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${añosFiltro.includes(a) ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-200 text-gray-500 hover:border-emerald-300'}`}>
@@ -1518,22 +1638,26 @@ return (
     <div className="flex flex-wrap gap-1">
       {[...new Set(
         ventasAnalisis
-          .filter(v => añosFiltro.length === 0 || añosFiltro.includes(v.anio))
-          .map(v => v.mes)
-      )].sort((a,b) => a-b).map(m => (
+          .filter((v) => añosFiltro.length === 0 || añosFiltro.includes(Number(v.anio)))
+          .map((v) => Number(v.mes))
+          .filter((m) => Number.isFinite(m) && m > 0)
+      )].sort((a, b) => a - b).map((m) => (
         <button key={m}
           onClick={() => {
-          setMesesFiltro(prev =>
-          prev.includes(m - 1)
-          ? prev.filter(x => x !== m - 1)
-          : [...prev, m - 1]
-          )
-          setSemanasFiltro([])
+            setMesesFiltro(prev =>
+              prev.includes(m - 1)
+                ? prev.filter(x => x !== m - 1)
+                : [...prev, m - 1]
+            )
+            setSemanasFiltro([])
           }}
-
-           
-          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${mesesFiltro.includes(m - 1) ? 'bg-emerald-600 text-white border-emerald-600' : 'border-gray-200 text-gray-500 hover:border-emerald-300'}`}>
-          {['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][m - 1]}
+          className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+            mesesFiltro.includes(m - 1)
+              ? 'bg-emerald-600 text-white border-emerald-600'
+              : 'border-gray-200 text-gray-500 hover:border-emerald-300'
+          }`}
+        >
+          {MESES_NOMBRES[m - 1] || m}
         </button>
       ))}
     </div>
@@ -1548,11 +1672,11 @@ return (
     <div className="flex flex-wrap gap-1">
       {[...new Set(
         ventasAnalisis
-          .filter(v => añosFiltro.length === 0 || añosFiltro.includes(v.anio))
-          .filter(v => mesesFiltro.length === 0 || mesesFiltro.includes(v.mes - 1))
-          .map(v => v.semana)
-          .filter(Boolean)
-      )].sort((a, b) => a - b).map(s => (
+          .filter((v) => añosFiltro.length === 0 || añosFiltro.includes(Number(v.anio)))
+          .filter((v) => mesesFiltro.length === 0 || mesesFiltro.includes(Number(v.mes) - 1))
+          .map((v) => Number(v.semana))
+          .filter((s) => Number.isFinite(s) && s > 0)
+      )].sort((a, b) => a - b).map((s) => (
         <button
           key={s}
           onClick={() =>
@@ -1622,8 +1746,11 @@ return (
               <BarChart data={datosGrafica} margin={{top:55,right:16,left:8,bottom:78}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
                 <XAxis dataKey="label" tick={<TickEjeX />} interval={0} height={62}/>
-                <YAxis tick={{fontSize:10,fill:'#64748b'}} tickFormatter={v => `$${(v/1000).toFixed(0)}k`}/>
-                <Tooltip formatter={(val: number) => `$${val.toLocaleString('es-MX',{minimumFractionDigits:2})}`}/>
+                <YAxis tick={{fontSize:10,fill:'#64748b'}} tickFormatter={(v: any) => `$${(Number(v)/1000).toFixed(0)}k`}/>
+                <Tooltip formatter={(val: any) => {
+                  const num = typeof val === 'number' ? val : Number(val ?? 0)
+                  return `$${num.toLocaleString('es-MX',{minimumFractionDigits:2})}`
+                }}/>
                 <Legend wrapperStyle={{fontSize:'11px',paddingTop:'8px',fontWeight:700}}/>
                 {metricasSeleccionadas.includes('ingreso') && (
                   <Bar dataKey="ingreso" name="Ingreso" fill="#16a34a" radius={[4,4,0,0]}>
@@ -1654,8 +1781,11 @@ return (
               <LineChart data={datosGrafica} margin={{top:55,right:16,left:8,bottom:78}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9"/>
                 <XAxis dataKey="label" tick={<TickEjeX />} interval={0} height={62}/>
-                <YAxis tick={{fontSize:10,fill:'#64748b'}} tickFormatter={v => `$${(v/1000).toFixed(0)}k`}/>
-                <Tooltip formatter={(val: number) => `$${val.toLocaleString('es-MX',{minimumFractionDigits:2})}`}/>
+                <YAxis tick={{fontSize:10,fill:'#64748b'}} tickFormatter={(v: any) => `$${(Number(v)/1000).toFixed(0)}k`}/>
+                <Tooltip formatter={(val: any) => {
+                  const num = typeof val === 'number' ? val : Number(val ?? 0)
+                  return `$${num.toLocaleString('es-MX',{minimumFractionDigits:2})}`
+                }}/>
                 <Legend wrapperStyle={{fontSize:'11px',paddingTop:'8px',fontWeight:700}}/>
                 {metricasSeleccionadas.includes('ingreso') && (
                   <Line type="monotone" dataKey="ingreso" name="Ingreso" stroke="#16a34a" strokeWidth={2} dot={{r:3}}>
@@ -1772,7 +1902,7 @@ return (
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-gray-900">${v.ingreso_real}</p>
-                  {v.utilidad !== null && (
+                  {v.utilidad !== null && v.utilidad !== undefined && (
                     <p className={`text-xs ${v.utilidad >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>util. ${v.utilidad}</p>
                   )}
                 </div>

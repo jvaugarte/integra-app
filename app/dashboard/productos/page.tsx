@@ -4,6 +4,51 @@ import { supabase } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import BorradoMasivo from '../../components/BorradoMasivo'
 
+type AtributoAsignado = {
+  nombre?: string | null
+  valor?: string | null
+}
+
+type Producto = {
+  id: string
+  nombre: string
+  precio?: number | null
+  costo?: number | null
+  aplica_inventario?: boolean | null
+  categoria?: string | null
+  sku?: string | null
+  atributos_asignados?: AtributoAsignado[]
+}
+
+type Categoria = {
+  id: string
+  nombre: string
+}
+
+type Atributo = {
+  id: string
+  nombre: string
+}
+
+type AtributoValor = {
+  id: string
+  atributo_id: string
+  valor: string
+}
+
+type ExcelRow = Record<string, any>
+
+type ProductoAtributoJoin = {
+  producto_id: string
+  atributo_id?: string | null
+  atributos?: { nombre?: string | null } | { nombre?: string | null }[] | null
+  atributo_valores?: { valor?: string | null } | { valor?: string | null }[] | null
+}
+
+function relacionUno<T>(valor: T | T[] | null | undefined): T | undefined {
+  return Array.isArray(valor) ? valor[0] : valor ?? undefined
+}
+
 const normalizar = (s: string) => s.toLowerCase().trim()
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
@@ -18,11 +63,11 @@ function generarSKU(categoria: string, nombre: string, consecutivo: number): str
 }
 
 export default function Productos() {
-  const [productos, setProductos] = useState([])
-  const [proyectoId, setProyectoId] = useState(null)
-  const [atributos, setAtributos] = useState([])
-  const [valoresPorAtributo, setValoresPorAtributo] = useState<Record<string, any[]>>({})
-  const [categorias, setCategorias] = useState([])
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [proyectoId, setProyectoId] = useState<string | null>(null)
+  const [atributos, setAtributos] = useState<Atributo[]>([])
+  const [valoresPorAtributo, setValoresPorAtributo] = useState<Record<string, AtributoValor[]>>({})
+  const [categorias, setCategorias] = useState<Categoria[]>([])
 
   const [form, setForm] = useState({
     nombre: '', precio: '', costo: '',
@@ -37,11 +82,11 @@ export default function Productos() {
   const [guardado, setGuardado] = useState(false)
   const [modo, setModo] = useState('manual')
   const [seccion, setSeccion] = useState<'producto'|'categorias'|'atributos'|'instrucciones'>('instrucciones')
-  const [archivoFile, setArchivoFile] = useState(null)
-  const [preview, setPreview] = useState([])
-  const [duplicados, setDuplicados] = useState([])
+  const [archivoFile, setArchivoFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<ExcelRow[]>([])
+  const [duplicados, setDuplicados] = useState<string[]>([])
   const [showConfirm, setShowConfirm] = useState(false)
-  const [pendingRows, setPendingRows] = useState([])
+  const [pendingRows, setPendingRows] = useState<ExcelRow[]>([])
   const [subModoExcel, setSubModoExcel] = useState('subir')
   const [erroresImportacion, setErroresImportacion] = useState<string[]>([])
   const [showErrores, setShowErrores] = useState(false)
@@ -59,7 +104,7 @@ export default function Productos() {
     if (!cliente) return
     const { data: proyecto } = await supabase.from('proyectos').select('id').eq('cliente_id', cliente.id).limit(1).single()
     if (!proyecto) return
-    setProyectoId(proyecto.id)
+    setProyectoId(proyecto.id as string)
 
     const { data: prods } = await supabase.from('productos').select('*')
       .eq('proyecto_id', proyecto.id).eq('activo', true).order('nombre')
@@ -68,28 +113,32 @@ export default function Productos() {
       .select('producto_id, atributo_id, atributo_valores(valor), atributos(nombre)')
       .in('producto_id', (prods || []).map(p => p.id))
 
-    const prodsConAtributos = (prods || []).map(p => ({
+    const prodsConAtributos = ((prods || []) as Producto[]).map((p) => ({
       ...p,
-      atributos_asignados: (prodAttrs || [])
-        .filter(a => a.producto_id === p.id)
-        .map(a => ({ nombre: a.atributos?.nombre, valor: a.atributo_valores?.valor }))
+      atributos_asignados: ((prodAttrs || []) as ProductoAtributoJoin[])
+        .filter((a) => a.producto_id === p.id)
+        .map((a) => {
+          const atributo = relacionUno(a.atributos)
+          const valor = relacionUno(a.atributo_valores)
+          return { nombre: atributo?.nombre ?? null, valor: valor?.valor ?? null }
+        }),
     }))
-    setProductos(prodsConAtributos)
+    setProductos(prodsConAtributos as Producto[])
 
     const { data: cats } = await supabase.from('categorias')
       .select('*').eq('proyecto_id', proyecto.id).order('nombre')
-    setCategorias(cats || [])
+    setCategorias((cats || []) as Categoria[])
 
     const { data: attrs } = await supabase.from('atributos')
       .select('*').eq('proyecto_id', proyecto.id).order('nombre')
-    setAtributos(attrs || [])
+    setAtributos((attrs || []) as Atributo[])
 
     if (attrs?.length) {
-      const valMap: Record<string, any[]> = {}
+      const valMap: Record<string, AtributoValor[]> = {}
       for (const attr of attrs) {
         const { data: vals } = await supabase.from('atributo_valores')
           .select('*').eq('atributo_id', attr.id).order('valor')
-        valMap[attr.id] = vals || []
+        valMap[attr.id] = (vals || []) as AtributoValor[]
       }
       setValoresPorAtributo(valMap)
     }
@@ -97,7 +146,7 @@ export default function Productos() {
 
   async function generarSkuAuto(nombre: string, categoriaId: string) {
     if (!nombre) return ''
-    const cat = categorias.find(c => c.id === categoriaId)
+    const cat = categorias.find((c) => c.id === categoriaId)
     const { count } = await supabase.from('productos')
       .select('*', { count: 'exact', head: true }).eq('proyecto_id', proyectoId)
     const consecutivo = (count || 0) + 1
@@ -114,7 +163,7 @@ export default function Productos() {
       precio: parseFloat(form.precio),
       costo: form.costo ? parseFloat(form.costo) : null,
       aplica_inventario: form.aplica_inventario,
-      categoria: categorias.find(c => c.id === form.categoria_id)?.nombre || null,
+      categoria: categorias.find((c) => c.id === form.categoria_id)?.nombre || null,
       sku: sku || null,
     }).select().single()
 
@@ -203,7 +252,7 @@ export default function Productos() {
       { header: 'Nombre',              key: 'nombre',    width: 30 },
       { header: 'Precio',              key: 'precio',    width: 14 },
       { header: 'Costo',               key: 'costo',     width: 14 },
-      { header: 'Aplica_Inventario',   key: 'aplica',    width: 18 },
+      { header: 'Aplica_inventario',   key: 'aplica',    width: 18 },
       { header: 'Categoria_Principal', key: 'categoria', width: 22 },
       { header: 'SKU',                 key: 'sku',       width: 16 },
     ]
@@ -212,7 +261,7 @@ export default function Productos() {
     }))
     wsDatos.columns = [...columnasBase, ...columnasAtributos]
     const hDatos = wsDatos.getRow(1)
-    hDatos.eachCell(cell => {
+    hDatos.eachCell((cell: any) => {
       cell.font = fAzulOsc; cell.fill = fillAzulOsc
       cell.alignment = center
       cell.border = { bottom: { style: 'medium', color: { argb: 'FF' + AZUL_MED } } }
@@ -222,9 +271,9 @@ export default function Productos() {
     const ws = wb.addWorksheet('Instrucciones')
     ws.columns = [{ width: 22 }, { width: 14 }, { width: 14 }, { width: 42 }, { width: 28 }, { width: 28 }]
     const addRow = (v: any[], h = 18) => { const row = ws.addRow(v); row.height = h; return row }
-    const merge  = (r1, c1, r2, c2) => ws.mergeCells(r1, c1, r2, c2)
-    const styleRow = (row, font, fill, align = center) =>
-      row.eachCell({ includeEmpty: true }, (cell) => { cell.font = font; cell.fill = fill; cell.alignment = align })
+    const merge  = (r1: number, c1: number, r2: number, c2: number) => ws.mergeCells(r1, c1, r2, c2)
+    const styleRow = (row: any, font: any, fill: any, align: any = center) =>
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = font; cell.fill = fill; cell.alignment = align })
     let r = 1
 
     const titulo = addRow(['📦  GUÍA DE CAPTURA DE CATÁLOGO — INTEGRA Inteligencia Integral'], 30)
@@ -240,14 +289,14 @@ export default function Productos() {
       ['Nombre',           'Texto',          '✅ Sí', 'Nombre del producto o servicio',                                    'Laptop HP 15'],
       ['Precio',           'Número decimal', '✅ Sí', 'Precio de venta al público',                                        '12999.00'],
       ['Costo',            'Número decimal', '⚠️ No', 'Costo unitario de compra o producción',                             '9500.00'],
-      ['Aplica_Inventario','SI / NO',        '✅ Sí', 'SI si es producto físico, NO si es servicio',                       'SI'],
+      ['Aplica_inventario','SI / NO',        '✅ Sí', 'SI si es producto físico, NO si es servicio',                       'SI'],
       ['Categoria',        'Texto',          '⚠️ No', 'Nombre de la categoría tal como está en el sistema',                'Hardware'],
       ['SKU',              'Texto',          '⚠️ No', 'Código del producto. Si lo dejas vacío el sistema genera uno auto', 'HAR-LH-001'],
     ]
     colsData.forEach((fila, i) => {
       const row = addRow(fila, 20)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty: true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} })
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} })
       r++
     })
     addRow([],6); r++
@@ -257,15 +306,15 @@ export default function Productos() {
     const reglas = [
       ['SKU automático',    'Si dejas la columna SKU vacía el sistema genera uno con formato CAT-NOM-001 automáticamente.'],
       ['Categoría',         'El nombre debe coincidir exactamente con las categorías creadas en el sistema.'],
-      ['Aplica_Inventario', 'Escribe exactamente SI o NO. Los servicios deben tener NO.'],
+      ['Aplica_inventario', 'Escribe exactamente SI o NO. Los servicios deben tener NO.'],
       ['Decimales',         'Usa punto (.) como separador decimal. Ejemplo: 1250.50 — NO uses coma.'],
       ['Atributos',         'Escribe el valor exactamente como aparece en la hoja Referencia. El sistema lo busca automáticamente.'],
-      ['Inventario',        'El inventario se registra en la sección de Inventario, no aquí. Solo indica si el producto aplica inventario (SI/NO).'],
+      ['inventario',        'El inventario se registra en la sección de inventario, no aquí. Solo indica si el producto aplica inventario (SI/NO).'],
     ]
     reglas.forEach((fila, i) => {
       const row = addRow(fila, 22); merge(r,2,r,6)
       const fill = i % 2 === 0 ? fillVerdeCl : fillGris
-      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      row.eachCell({ includeEmpty: true }, (cell: any, colNum: number) => {
         cell.font = colNum === 1 ? { bold:true, size:10, color:{argb:'FF'+AZUL_OSC}, name:'Arial' } : fNormal
         cell.fill = fill; cell.alignment = left
       }); r++
@@ -274,7 +323,7 @@ export default function Productos() {
 
     const s3 = addRow(['  3.  EJEMPLO DE CAPTURA CORRECTA'], 22)
     merge(r,1,r,6); s3.getCell(1).font = fAzulOsc; s3.getCell(1).fill = fillAzulOsc; s3.getCell(1).alignment = left; r++
-    const hEj = addRow(['Nombre','Precio','Costo','Aplica_Inventario','Categoria','SKU'], 20)
+    const hEj = addRow(['Nombre','Precio','Costo','Aplica_inventario','Categoria','SKU'], 20)
     styleRow(hEj, fAzulMed, fillAzulMed); r++
     const ejemplos = [
       ['Laptop HP 15 Core i5', '12999.00', '9500.00', 'SI', 'Hardware', ''],
@@ -284,7 +333,7 @@ export default function Productos() {
     ejemplos.forEach((fila, i) => {
       const row = addRow(fila, 20)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty: true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = center })
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = center })
       r++
     })
     addRow([],6); r++
@@ -295,7 +344,7 @@ export default function Productos() {
       '  • Puedes subir el archivo en formato CSV, XLS o XLSX.',
       '  • El sistema detectará duplicados y te preguntará si deseas reemplazarlos u omitirlos.',
       '  • Los valores de atributos se buscan automáticamente — consulta la hoja Referencia para ver los valores válidos.',
-      '  • El inventario (cantidades disponibles) se registra en la sección de Inventario, no en el catálogo.',
+      '  • El inventario (cantidades disponibles) se registra en la sección de inventario, no en el catálogo.',
       '  • ¿Dudas? Consulta a tu consultor INTEGRA o usa el Asistente IA dentro de la app.',
     ]
     notas.forEach(nota => {
@@ -306,7 +355,7 @@ export default function Productos() {
     const wsRef = wb.addWorksheet('Referencia')
     wsRef.columns = [{ width: 25 }, { width: 20 }, { width: 35 }]
     const addRowRef = (v: any[], h = 18) => { const row = wsRef.addRow(v); row.height = h; return row }
-    const mergeRef  = (r1, c1, r2, c2) => wsRef.mergeCells(r1, c1, r2, c2)
+    const mergeRef  = (r1: number, c1: number, r2: number, c2: number) => wsRef.mergeCells(r1, c1, r2, c2)
     let rr = 1
 
     const tituloRef = addRowRef(['📋  VALORES VÁLIDOS PARA TU CATÁLOGO'], 28)
@@ -318,12 +367,12 @@ export default function Productos() {
     mergeRef(rr,1,rr,3); sCat.getCell(1).font = fAzulOsc; sCat.getCell(1).fill = fillAzulOsc
     sCat.getCell(1).alignment = { horizontal:'left' as const, vertical:'middle' as const }; rr++
     const hCat = addRowRef(['Nombre de categoría','Usar exactamente este valor en columna Categoria_Principal',''], 20)
-    mergeRef(rr,2,rr,3); hCat.eachCell({ includeEmpty:true }, cell => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
+    mergeRef(rr,2,rr,3); hCat.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
     categorias.forEach((cat, i) => {
       const row = addRowRef([cat.nombre, cat.nombre, ''], 18)
       mergeRef(rr,2,rr,3)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, (cell, colNum) => {
+      row.eachCell({ includeEmpty:true }, (cell: any, colNum: number) => {
         cell.font = colNum === 2 ? { bold:true, size:10, color:{argb:'FF16a34a'}, name:'Arial' } : fNormal
         cell.fill = fill; cell.alignment = center
       }); rr++
@@ -334,13 +383,13 @@ export default function Productos() {
     mergeRef(rr,1,rr,3); sAttr.getCell(1).font = fAzulOsc; sAttr.getCell(1).fill = fillAzulOsc
     sAttr.getCell(1).alignment = { horizontal:'left' as const, vertical:'middle' as const }; rr++
     const hAttr = addRowRef(['Atributo','Valores válidos (escribe uno de estos en la columna correspondiente)',''], 20)
-    mergeRef(rr,2,rr,3); hAttr.eachCell({ includeEmpty:true }, cell => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
+    mergeRef(rr,2,rr,3); hAttr.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
     atributos.forEach((attr, i) => {
       const valores = (valoresPorAtributo[attr.id] || []).map(v => v.valor).join(', ')
       const row = addRowRef([attr.nombre, valores, ''], 20)
       mergeRef(rr,2,rr,3)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, cell => {
+      row.eachCell({ includeEmpty:true }, (cell: any) => {
         cell.font = fNormal; cell.fill = fill
         cell.alignment = { horizontal:'left' as const, vertical:'middle' as const, wrapText:true }
       }); rr++
@@ -353,30 +402,33 @@ export default function Productos() {
     URL.revokeObjectURL(url)
   }
 
-  async function leerArchivo(file) {
+  async function leerArchivo(file: File) {
     setArchivoFile(file)
     const XLSXModule = await import('xlsx')
     const XLSX = XLSXModule.default || XLSXModule
     const reader = new FileReader()
     reader.onload = async (e) => {
-      const wb = XLSX.read(e.target.result, { type: 'array' })
+      const result = e.target?.result
+      if (!result) return
+
+      const wb = XLSX.read(result, { type: 'array' })
       const ws = wb.Sheets[wb.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
-      setPreview(rows.slice(0, 3))
-      const nombres = rows.map(r => normalizar(r.Nombre || '')).filter(Boolean)
+      setPreview((rows as ExcelRow[]).slice(0, 3))
+      const nombres = (rows as ExcelRow[]).map((r) => normalizar(r.Nombre || '')).filter(Boolean)
       const { data: existentes } = await supabase.from('productos')
         .select('nombre').eq('proyecto_id', proyectoId).eq('activo', true)
-      const nombresExistentes = (existentes || []).map(p => normalizar(p.nombre))
+      const nombresExistentes = (existentes || []).map((p: any) => normalizar(p.nombre))
       const dups = nombres.filter(n => nombresExistentes.includes(n))
       setDuplicados(dups)
-      setPendingRows(rows)
+      setPendingRows(rows as ExcelRow[])
       if (dups.length > 0) setShowConfirm(true)
-      else await importarProductos(rows, false)
+      else await importarProductos(rows as ExcelRow[], false)
     }
     reader.readAsArrayBuffer(file)
   }
 
-  async function importarProductos(rows, reemplazar) {
+  async function importarProductos(rows: ExcelRow[], reemplazar: boolean) {
     setShowConfirm(false)
     setLoading(true)
     const errores: string[] = []
@@ -385,7 +437,7 @@ export default function Productos() {
       .select('id, nombre').eq('proyecto_id', proyectoId)
     const { data: valoresDB } = await supabase.from('atributo_valores')
       .select('id, valor, atributo_id')
-      .in('atributo_id', (atributosDB || []).map(a => a.id))
+      .in('atributo_id', (atributosDB || []).map((a: any) => a.id))
 
     const { count } = await supabase.from('productos')
       .select('*', { count: 'exact', head: true }).eq('proyecto_id', proyectoId)
@@ -399,13 +451,20 @@ export default function Productos() {
       const nombreNorm = normalizar(row.Nombre)
       if (reemplazar) {
         const { data: existing } = await supabase.from('productos')
-          .select('id').eq('proyecto_id', proyectoId).ilike('nombre', row.Nombre).limit(1)
-        if (existing?.length > 0) {
-          await supabase.from('productos').update({ activo: false }).eq('id', existing[0].id)
-        }
+  .select('id')
+  .eq('proyecto_id', proyectoId)
+  .ilike('nombre', row.Nombre)
+  .limit(1)
+
+if ((existing?.length ?? 0) > 0 && existing?.[0]?.id) {
+  await supabase
+    .from('productos')
+    .update({ activo: false })
+    .eq('id', existing[0].id)
+}
       } else if (duplicados.includes(nombreNorm)) continue
 
-      const catNombre = categorias.find(c =>
+      const catNombre = categorias.find((c) =>
         normalizar(c.nombre) === normalizar(row.Categoria_Principal || row.Categoria || '')
       )
       if (!catNombre && (row.Categoria_Principal || row.Categoria)) {
@@ -421,7 +480,7 @@ export default function Productos() {
         nombre: row.Nombre,
         precio: parseFloat(row.Precio) || 0,
         costo: row.Costo ? parseFloat(row.Costo) : null,
-        aplica_inventario: String(row.Aplica_Inventario).toUpperCase() !== 'NO',
+        aplica_inventario: String(row.Aplica_inventario).toUpperCase() !== 'NO',
         categoria: catNombre?.nombre || row.Categoria_Principal || row.Categoria || null,
         sku,
       }).select().single()
@@ -429,13 +488,13 @@ export default function Productos() {
       if (prodInsertado && atributosDB?.length) {
         for (const attrDB of atributosDB) {
           const colMatch = Object.keys(row).find(
-            k => k.toLowerCase().trim() === attrDB.nombre.toLowerCase().trim()
+            (k) => k.toLowerCase().trim() === attrDB.nombre.toLowerCase().trim()
           )
           if (!colMatch) continue
           const valorTexto = String(row[colMatch] || '').trim()
           if (!valorTexto) continue
 
-          const valorDB = (valoresDB || []).find(v =>
+          const valorDB = (valoresDB || []).find((v: any) =>
             v.atributo_id === attrDB.id &&
             normalizar(v.valor).replace(/[^a-z0-9]/g, '') === normalizar(valorTexto).replace(/[^a-z0-9]/g, '')
           )
@@ -484,7 +543,7 @@ export default function Productos() {
       { header:'Tipo',      key:'tipo',      width:12 },
     ]
     const header = ws.getRow(1)
-    header.eachCell(cell => {
+    header.eachCell((cell: any) => {
       cell.font = fBlanco
       cell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF'+AZUL_OSC} }
       cell.alignment = center
@@ -492,16 +551,26 @@ export default function Productos() {
     })
     header.height = 22
     productos.forEach((p, i) => {
-      const utilidad = p.costo ? p.precio - p.costo : null
-      const margen = p.costo && p.precio ? ((p.precio - p.costo) / p.precio * 100).toFixed(1) + '%' : '—'
+  const precio = typeof p.precio === 'number' ? p.precio : 0
+  const costo = typeof p.costo === 'number' ? p.costo : null
+
+  const utilidad = costo !== null ? precio - costo : null
+  const margen = costo !== null && precio > 0
+    ? (((precio - costo) / precio) * 100).toFixed(1) + '%'
+    : '—'
       const row = ws.addRow([
-        p.sku || '—', p.nombre, p.categoria || '—', p.precio, p.costo || '—',
-        utilidad !== null ? utilidad : '—', margen,
-        p.aplica_inventario ? 'Producto' : 'Servicio',
-      ])
+  p.sku || '—',
+  p.nombre,
+  p.categoria || '—',
+  precio,
+  costo !== null ? costo : '—',
+  utilidad !== null ? utilidad : '—',
+  margen,
+  p.aplica_inventario ? 'Producto' : 'Servicio',
+])
       row.height = 18
       const fill = { type:'pattern' as const, pattern:'solid' as const, fgColor:{argb: i%2===0 ? 'FF'+AZUL_CLAR : 'FF'+GRIS} }
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left })
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left })
     })
     const buffer = await wb.xlsx.writeBuffer()
     const blob = new Blob([buffer], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -520,7 +589,7 @@ export default function Productos() {
         <span className="text-gray-200">/</span>
         <button onClick={() => router.push('/dashboard/ventas')} className="text-xs text-gray-400 hover:text-gray-600">Ventas</button>
         <span className="text-gray-200">/</span>
-        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">Inventario</button>
+        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">inventario</button>
         <span className="text-gray-200">/</span>
         <button onClick={() => router.push('/dashboard/promociones')} className="text-xs text-gray-400 hover:text-gray-600">Promociones</button>
       </div>
@@ -672,7 +741,7 @@ export default function Productos() {
                 <div className="border border-gray-100 rounded-xl p-4 bg-gray-50">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="w-6 h-6 rounded-full bg-gray-600 text-white text-xs font-bold flex items-center justify-center">5</span>
-                    <p className="text-sm font-semibold text-gray-900">Registra el Inventario por separado</p>
+                    <p className="text-sm font-semibold text-gray-900">Registra el inventario por separado</p>
                   </div>
                   <p className="text-xs text-gray-600">Una vez creado tu catálogo, ve a la sección de <strong>Inventario</strong> para registrar las cantidades disponibles, en tránsito y ordenadas de cada producto.</p>
                 </div>
@@ -888,10 +957,10 @@ export default function Productos() {
                   <p>4. Sube el archivo — el sistema busca automáticamente los IDs internos</p>
                   <p className="pt-1 text-amber-700">⚠️ Consulta la hoja Referencia para ver los valores válidos de cada atributo</p>
                 </div>
-                <div onClick={() => document.getElementById('file-cat').click()}
+                <div onClick={() => document.getElementById('file-cat')?.click()}
                   className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-emerald-300 hover:bg-emerald-50 transition-colors">
                   <input id="file-cat" type="file" accept=".csv,.xlsx,.xls" className="hidden"
-                    onChange={e => e.target.files[0] && leerArchivo(e.target.files[0])}/>
+                    onChange={e => e.target.files?.[0] && leerArchivo(e.target.files[0])}/>
                   <p className="text-sm text-gray-500">Arrastra tu archivo o haz clic para seleccionar</p>
                   <p className="text-xs text-gray-400 mt-1">CSV · XLSX · XLS</p>
                 </div>
@@ -980,13 +1049,19 @@ export default function Productos() {
         <p className="text-xs text-gray-400 mt-0.5">{productos.length} productos registrados</p>
       </div>
       <div className="flex gap-2">
-        <BorradoMasivo
-          tabla="productos"
-          proyectoId={proyectoId}
-          productos={productos}
-          modoCatalogo={true}
-          onBorrado={() => cargarDatos()}
-        />
+        {proyectoId && (
+          <BorradoMasivo
+            tabla="productos"
+            proyectoId={proyectoId}
+            productos={productos.map((p) => ({
+              id: p.id,
+              nombre: p.nombre,
+              sku: p.sku ?? undefined,
+            }))}
+            modoCatalogo={true}
+            onBorrado={() => cargarDatos()}
+          />
+        )}
         <button onClick={descargarCatalogoExcel}
           className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors">
           ↓ Exportar a Excel
@@ -1025,9 +1100,9 @@ export default function Productos() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-gray-500">
-                            {p.atributos_asignados?.length > 0
+                            {(p.atributos_asignados?.length ?? 0) > 0
                               ? <div className="flex flex-wrap gap-1">
-                                  {p.atributos_asignados.map((a, idx) => (
+                                  {p.atributos_asignados?.map((a, idx) => (
                                     <span key={idx} className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                                       <span className="text-gray-400">{a.nombre}:</span> {a.valor}
                                     </span>

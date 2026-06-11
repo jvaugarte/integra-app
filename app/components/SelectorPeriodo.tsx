@@ -4,12 +4,12 @@ import { useState } from 'react'
 const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 const DIAS = ['L','M','X','J','V','S','D']
 
-function getWeekNum(d: Date) { {
+function getWeekNum(d: Date) {
   const jan1 = new Date(d.getFullYear(), 0, 1)
   return Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7)
 }
 
-function getMondayOfWeek(d) {
+function getMondayOfWeek(d: Date) {
   const day = d.getDay()
   const diff = day === 0 ? -6 : 1 - day
   const m = new Date(d)
@@ -17,11 +17,18 @@ function getMondayOfWeek(d) {
   return m
 }
 
-function fmt(d) {
+function fmt(d: Date) {
   return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' })
 }
 
-export default function SelectorPeriodo({ onChange }) {
+type PeriodoChange = {
+  tipo: string
+  fecha: string
+  fecha_fin: string
+  label: string
+}
+
+export default function SelectorPeriodo({ onChange }: { onChange: (p: PeriodoChange) => void }) {
   const hoy = new Date()
   const [tipo, setTipo] = useState('dia')
   const [semVista, setSemVista] = useState('dias')
@@ -35,7 +42,7 @@ export default function SelectorPeriodo({ onChange }) {
   const [rangoInicio, setRangoInicio] = useState(hoy.toISOString().split('T')[0])
   const [rangoFin, setRangoFin] = useState(hoy.toISOString().split('T')[0])
 
-  function cambiarTipo(t) {
+  function cambiarTipo(t: string) {
     setTipo(t)
     if (t === 'dia') emitir('dia', hoy.toISOString().split('T')[0], hoy.toISOString().split('T')[0])
     if (t === 'semana') emitirSemana(hoy)
@@ -43,25 +50,25 @@ export default function SelectorPeriodo({ onChange }) {
     if (t === 'rango') emitirRango(rangoInicio, rangoFin)
   }
 
-  function emitir(t, fechaInicio, fechaFin) {
+  function emitir(t: string, fechaInicio: string, fechaFin: string) {
     const d = new Date(fechaInicio + 'T12:00:00')
     onChange({ tipo: t, fecha: fechaInicio, fecha_fin: fechaFin, label: d.toLocaleDateString('es-MX', { weekday:'long', day:'numeric', month:'long', year:'numeric' }) })
   }
 
-  function emitirSemana(fecha) {
+  function emitirSemana(fecha: Date) {
     const mon = getMondayOfWeek(fecha)
     const sun = new Date(mon.getTime() + 6 * 86400000)
     const wn = getWeekNum(mon)
     onChange({ tipo: 'semana', fecha: mon.toISOString().split('T')[0], fecha_fin: sun.toISOString().split('T')[0], label: `Semana ${wn} — ${fmt(mon)} al ${fmt(sun)} ${mon.getFullYear()}` })
   }
 
-  function emitirMes(m, y) {
+  function emitirMes(m: number, y: number) {
     const inicio = new Date(y, m, 1)
     const fin = new Date(y, m + 1, 0)
     onChange({ tipo: 'mes', fecha: inicio.toISOString().split('T')[0], fecha_fin: fin.toISOString().split('T')[0], label: `${MESES[m]} ${y}` })
   }
 
-  function emitirRango(inicio, fin) {
+  function emitirRango(inicio: string, fin: string) {
     if (!inicio || !fin) return
     onChange({ tipo: 'rango', fecha: inicio, fecha_fin: fin, label: `${fmt(new Date(inicio + 'T12:00:00'))} al ${fmt(new Date(fin + 'T12:00:00'))}` })
   }
@@ -120,7 +127,7 @@ export default function SelectorPeriodo({ onChange }) {
   const selMon = getMondayOfWeek(selSemana)
   const selSun = new Date(selMon.getTime() + 6 * 86400000)
 
-  const btnStyle = (active) => ({
+  const btnStyle = (active: boolean) => ({
     flex:1, padding:'6px 4px', fontSize:'11px', borderRadius:'8px', border:'0.5px solid', cursor:'pointer', transition:'all .15s',
     background: active ? '#EAF3DE' : 'transparent',
     borderColor: active ? '#C0DD97' : 'var(--color-border-secondary)',

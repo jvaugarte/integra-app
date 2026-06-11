@@ -4,22 +4,84 @@ import { supabase } from '../../lib/supabase'
 import { useRouter } from 'next/navigation'
 import BorradoMasivo from '../../components/BorradoMasivo'
 
+type Producto = {
+  id: string
+  proyecto_id?: string | null
+  nombre: string
+  sku?: string | null
+  SKU?: string | null
+  categoria?: string | null
+  precio?: number | null
+  costo?: number | null
+  activo?: boolean | null
+  aplica_inventario: boolean
+}
+
+type InventarioRow = {
+  id: string
+  proyecto_id?: string | null
+  producto_id: string
+  fecha: string
+  disponible: number | null
+  notas?: string | null
+}
+
+type InventarioPendienteRow = {
+  id?: string
+  proyecto_id?: string | null
+  producto_id: string
+  en_transito?: number | null
+  ordenado?: number | null
+  notas_pendiente?: string | null
+  updated_at?: string | null
+}
+
+type InventarioCacheRow = {
+  id: string
+  producto_id: string
+  fecha: string
+}
+
+type ImportRow = Record<string, unknown>
+
+type RegistroDisponible = {
+  proyecto_id: string
+  producto_id: string
+  fecha: string
+  disponible: number
+  notas: string | null
+}
+
+type RegistroPendiente = {
+  proyecto_id: string
+  producto_id: string
+  en_transito: number
+  ordenado: number
+  notas_pendiente: string | null
+  updated_at: string
+}
+
+type InventarioActualRow = Producto & {
+  ultimoDisponible: InventarioRow | null
+  pendiente: InventarioPendienteRow | null
+}
+
 const normalizar = (s: string) => s.toLowerCase().trim()
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
 export default function Inventario() {
-  const [productos, setProductos] = useState([])
-  const [proyectoId, setProyectoId] = useState(null)
-  const [inventario, setInventario] = useState([])
-  const [inventarioPendiente, setInventarioPendiente] = useState([])
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [proyectoId, setProyectoId] = useState<string | null>(null)
+  const [inventario, setInventario] = useState<InventarioRow[]>([])
+  const [inventarioPendiente, setInventarioPendiente] = useState<InventarioPendienteRow[]>([])
   const [loading, setLoading] = useState(false)
   const [guardado, setGuardado] = useState(false)
-  const [modo, setModo] = useState('manual')
-  const [preview, setPreview] = useState([])
-  const [pendingRows, setPendingRows] = useState([])
+  const [modo, setModo] = useState<'manual' | 'excel' | 'vista'>('manual')
+  const [preview, setPreview] = useState<ImportRow[]>([])
+  const [pendingRows, setPendingRows] = useState<ImportRow[]>([])
   const [duplicados, setDuplicados] = useState<string[]>([])
   const [showConfirm, setShowConfirm] = useState(false)
-  const [inventarioCache, setInventarioCache] = useState([])
+  const [inventarioCache, setInventarioCache] = useState<InventarioCacheRow[]>([])
   const [erroresImportacion, setErroresImportacion] = useState<string[]>([])
   const [showErrores, setShowErrores] = useState(false)
   const [progresoCarga, setProgresoCarga] = useState({
@@ -48,31 +110,31 @@ export default function Inventario() {
     const { data: proyecto } = await supabase.from('proyectos').select('id').eq('cliente_id', cliente.id).limit(1).single()
     if (!proyecto) return
     const idProyecto = pid || proyecto.id
-    setProyectoId(idProyecto)
+    setProyectoId(String(idProyecto))
 
     const { data: prods } = await supabase.from('productos').select('*')
       .eq('proyecto_id', idProyecto).eq('activo', true).order('nombre')
-    setProductos(prods || [])
+    setProductos((prods || []) as Producto[])
 
     // Historial de disponible
 const { data: inv } = await supabase.from('inventario')
   .select('*')
   .eq('proyecto_id', idProyecto)
   .order('fecha', { ascending: false })
-setInventario(inv || [])
+setInventario((inv || []) as InventarioRow[])
 
 // Foto actual de en tránsito y ordenado
 const { data: pend } = await supabase.from('inventario_pendiente')
   .select('*')
   .eq('proyecto_id', idProyecto)
-setInventarioPendiente(pend || [])
+setInventarioPendiente((pend || []) as InventarioPendienteRow[])
 }
 
-  function obtenerSkuProducto(producto: any) {
-    return String(producto?.sku || producto?.SKU || '').toLowerCase().trim()
+  function obtenerSkuProducto(producto: Producto | ImportRow | null | undefined) {
+    return normalizar(String(producto?.sku || producto?.SKU || ''))
   }
 
-  function normalizarNumero(valor: any) {
+  function normalizarNumero(valor: unknown) {
     if (valor === null || valor === undefined || valor === '') return null
     const limpio = String(valor).replace('$', '').replace(/,/g, '').trim()
     const numero = parseFloat(limpio)
@@ -80,7 +142,7 @@ setInventarioPendiente(pend || [])
   }
 
   // Combinar inventario histórico + pendiente por producto
-  const inventarioActual = productos
+  const inventarioActual: InventarioActualRow[] = productos
     .filter(p => p.aplica_inventario)
     .map(prod => {
       const registros = inventario.filter(i => i.producto_id === prod.id)
@@ -96,6 +158,7 @@ setInventarioPendiente(pend || [])
   }
 
   async function guardarInventario() {
+    if (!proyectoId) return alert('Espera a que cargue el proyecto.')
     if (!form.producto_id) return alert('Selecciona un producto')
     if (form.disponible === '') return alert('El inventario Disponible es requerido')
     setLoading(true)
@@ -157,7 +220,7 @@ setInventarioPendiente(pend || [])
       { header: 'Notas',       key: 'notas',       width: 30 },
     ]
     const hDatos = wsDatos.getRow(1)
-    hDatos.eachCell(cell => {
+    hDatos.eachCell((cell: any) => {
         cell.font = fAzulOsc; cell.fill = fillAzulOsc
         cell.alignment = center
         cell.border = { bottom: { style: 'medium', color: { argb: 'FF' + AZUL_MED } } }
@@ -185,10 +248,15 @@ setInventarioPendiente(pend || [])
 
     const ws = wb.addWorksheet('Instrucciones')
     ws.columns = [{ width: 22 }, { width: 14 }, { width: 14 }, { width: 40 }, { width: 28 }]
-    const addRow = (v: any[], h = 18) => { const row = ws.addRow(v); row.height = h; return row }
-    const merge  = (r1, c1, r2, c2) => ws.mergeCells(r1, c1, r2, c2)
-    const styleRow = (row, font, fill, align = center) =>
-      row.eachCell({ includeEmpty: true }, (cell) => { cell.font = font; cell.fill = fill; cell.alignment = align })
+    const addRow = (v: unknown[], h = 18) => { const row = ws.addRow(v); row.height = h; return row }
+    const merge  = (r1: number, c1: number, r2: number, c2: number) => ws.mergeCells(r1, c1, r2, c2)
+    const styleRow = (row: any, font: any, fill: any, align: any = center) =>
+    row.eachCell({ includeEmpty: true }, (cell: any) => {
+    cell.font = font
+    cell.fill = fill
+    cell.alignment = align
+  })
+
     let r = 1
 
     const titulo = addRow(['📦  GUÍA DE CARGA DE INVENTARIO — INTEGRA Inteligencia Integral'], 30)
@@ -231,7 +299,7 @@ setInventarioPendiente(pend || [])
       const altura = [0, 2, 3, 4].includes(i) ? 44 : 22
       const row = addRow(fila, altura)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty: true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} }); r++
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} }); r++
     })
     addRow([],6); r++
 
@@ -266,7 +334,7 @@ setInventarioPendiente(pend || [])
       const disponibleActual = ultimoInv ? ultimoInv.disponible : '—'
       const row = addRow([p.categoria || '—', p.sku || '—', fechaUltima, p.nombre, disponibleActual], 36)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty: true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); r++
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); r++
     })
 
     const buffer = await wb.xlsx.writeBuffer()
@@ -276,7 +344,7 @@ setInventarioPendiente(pend || [])
     URL.revokeObjectURL(url)
   }
 
-  async function leerArchivo(file) {
+  async function leerArchivo(file: File) {
     if (!proyectoId) return alert('Espera a que cargue el proyecto.')
     if (!productos.length) return alert('No hay productos cargados.')
 
@@ -284,13 +352,15 @@ setInventarioPendiente(pend || [])
     const XLSX = XLSXModule.default || XLSXModule
     const reader = new FileReader()
 
-    reader.onload = async (e) => {
-      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true })
+    reader.onload = async (e: ProgressEvent<FileReader>) => {
+      const result = e.target?.result
+      if (!result) return alert('No se pudo leer el archivo.')
+      const wb = XLSX.read(result, { type: 'array', cellDates: true })
       const sheetName = wb.SheetNames.includes('Datos') ? 'Datos' : wb.SheetNames[0]
       const ws = wb.Sheets[sheetName]
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as ImportRow[]
 
-      const rowsFiltradas = rows.filter((row: any) => {
+      const rowsFiltradas = rows.filter((row: ImportRow) => {
         const sku  = String(row.SKU || row.sku || '').trim()
         const disp = row.Disponible ?? row.disponible
         return sku && disp !== ''
@@ -304,11 +374,11 @@ setInventarioPendiente(pend || [])
       setPreview(rowsFiltradas.slice(0, 3))
 
       const errores: string[] = []
-      const rowsValidas: any[] = []
+      const rowsValidas: ImportRow[] = []
 
       for (const row of rowsFiltradas) {
         const skuOriginal = String(row.SKU || row.sku || '').trim()
-        const sku = skuOriginal.toLowerCase().trim()
+        const sku = normalizar(skuOriginal)
         const prod = productos.find(p => obtenerSkuProducto(p) === sku)
         if (!prod) { errores.push(`SKU no encontrado: ${skuOriginal}`); continue }
         if (!prod.aplica_inventario) { errores.push(`SKU ${skuOriginal}: es un servicio, no aplica inventario`); continue }
@@ -331,9 +401,9 @@ setInventarioPendiente(pend || [])
 
       const productosIds = [...new Set(
         rowsValidas.map(row => {
-          const sku = String(row.SKU || row.sku || '').toLowerCase().trim()
+          const sku = normalizar(String(row.SKU || row.sku || ''))
           return productos.find(p => obtenerSkuProducto(p) === sku)?.id
-        }).filter(Boolean)
+        }).filter((id): id is string => Boolean(id))
       )]
 
       // Solo verificar duplicados en inventario (disponible histórico)
@@ -343,7 +413,7 @@ setInventarioPendiente(pend || [])
         .eq('proyecto_id', proyectoId)
         .in('producto_id', productosIds)
 
-      setInventarioCache(invExistente || [])
+      setInventarioCache((invExistente || []) as InventarioCacheRow[])
 
       const setExistentes = new Set(
         (invExistente || []).map(i => `${i.producto_id}__${i.fecha}`)
@@ -351,7 +421,7 @@ setInventarioPendiente(pend || [])
 
       const dups: string[] = []
       for (const row of rowsValidas) {
-        const sku   = String(row.SKU || row.sku || '').toLowerCase().trim()
+        const sku   = normalizar(String(row.SKU || row.sku || ''))
         const fecha = String(row.Fecha || row.fecha || '').trim()
         const prod  = productos.find(p => obtenerSkuProducto(p) === sku)
         if (prod && setExistentes.has(`${prod.id}__${fecha}`)) {
@@ -370,19 +440,20 @@ setInventarioPendiente(pend || [])
     reader.readAsArrayBuffer(file)
   }
 
-  async function importarInventario(rows, reemplazar, cache = inventarioCache) {
+  async function importarInventario(rows: ImportRow[], reemplazar: boolean, cache: InventarioCacheRow[] = inventarioCache) {
+    if (!proyectoId) return alert('Espera a que cargue el proyecto.')
     setShowConfirm(false)
     setLoading(true)
     setProgresoCarga({ activo: true, total: rows.length, cargadas: 0, porcentaje: 0, mensaje: 'Preparando registros...' })
 
-    const registrosDisponible: any[] = []
-    const registrosPendiente: any[] = []
+    const registrosDisponible: RegistroDisponible[] = []
+    const registrosPendiente: RegistroPendiente[] = []
     const errores: string[] = []
 
     for (const row of rows) {
       const skuOriginal = String(row.SKU || row.sku || '').trim()
-      const sku   = skuOriginal.toLowerCase().trim()
-      const normalizarFechaInv = (valor: any): string => {
+      const sku   = normalizar(skuOriginal)
+      const normalizarFechaInv = (valor: unknown): string => {
   if (!valor) return ''
   if (valor instanceof Date && !Number.isNaN(valor.getTime())) {
     return `${valor.getFullYear()}-${String(valor.getMonth()+1).padStart(2,'0')}-${String(valor.getDate()).padStart(2,'0')}`
@@ -621,67 +692,121 @@ const fecha = normalizarFechaInv(row.Fecha ?? row.fecha)
         </div>
 
         {/* Captura manual */}
-        {modo === 'manual' && (
-          <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-  <p className="text-sm font-medium text-gray-900">Registrar inventario</p>
-  <div className="flex gap-2">
-    <BorradoMasivo tabla="inventario" proyectoId={proyectoId} productos={productos} campoFecha="fecha" onBorrado={() => cargarDatos(proyectoId)}/>
-      </div>
-</div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Producto *</label>
-                <select value={form.producto_id} onChange={e => setForm({...form, producto_id: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                  <option value="">Selecciona un producto</option>
-                  {productos.filter(p => p.aplica_inventario).map(p => (
-                    <option key={p.id} value={p.id}>{p.nombre} {p.sku ? `(${p.sku})` : ''}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Fecha del conteo *</label>
-                <input type="date" value={form.fecha} onChange={e => setForm({...form, fecha: e.target.value})}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="border border-emerald-200 rounded-xl p-3 bg-emerald-50">
-                <label className="text-xs font-semibold text-emerald-800 block mb-1">✅ Disponible *</label>
-                <p className="text-xs text-gray-500 mb-1">En almacén. <span className="text-emerald-700 font-medium">Guarda historial.</span></p>
-                <input type="number" value={form.disponible} onChange={e => setForm({...form, disponible: e.target.value})}
-                  placeholder="0" min="0"
-                  className="w-full border border-emerald-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
-              </div>
-              <div className="border border-blue-200 rounded-xl p-3 bg-blue-50">
-                <label className="text-xs font-semibold text-blue-800 block mb-1">🚚 En Tránsito</label>
-                <p className="text-xs text-gray-500 mb-1">Envío confirmado. <span className="text-blue-700 font-medium">Reemplaza anterior.</span></p>
-                <input type="number" value={form.en_transito} onChange={e => setForm({...form, en_transito: e.target.value})}
-                  placeholder="Opcional" min="0"
-                  className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"/>
-              </div>
-              <div className="border border-amber-200 rounded-xl p-3 bg-amber-50">
-                <label className="text-xs font-semibold text-amber-800 block mb-1">📋 Ordenado</label>
-                <p className="text-xs text-gray-500 mb-1">Sin confirmación. <span className="text-amber-700 font-medium">Reemplaza anterior.</span></p>
-                <input type="number" value={form.ordenado} onChange={e => setForm({...form, ordenado: e.target.value})}
-                  placeholder="Opcional" min="0"
-                  className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"/>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Notas (opcional)</label>
-              <input value={form.notas} onChange={e => setForm({...form, notas: e.target.value})}
-                placeholder="Ej. Conteo físico semanal, ajuste por merma..."
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"/>
-            </div>
-            <button onClick={guardarInventario} disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-medium py-3 rounded-xl text-sm transition-colors">
-              {guardado ? '✓ Inventario registrado' : loading ? 'Guardando...' : 'Registrar inventario'}
-            </button>
-          </div>
-        )}
+{modo === 'manual' && (
+  <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
+              <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-900">Registrar inventario</p>
 
+              <div className="flex gap-2">
+                {proyectoId && (
+                  <BorradoMasivo
+                    tabla="inventario"
+                    proyectoId={proyectoId}
+                    productos={productos.map((p) => ({
+                      id: p.id,
+                      nombre: p.nombre,
+                      sku: p.sku ?? undefined,
+                    }))}
+                    campoFecha="fecha"
+                    onBorrado={() => cargarDatos(proyectoId)}
+                  />
+                )}
+              </div>
+            </div>
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <label className="text-xs text-gray-500 block mb-1">Producto *</label>
+        <select
+          value={form.producto_id}
+          onChange={(e) => setForm({ ...form, producto_id: e.target.value })}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        >
+          <option value="">Selecciona un producto</option>
+          {productos.filter((p) => p.aplica_inventario).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.nombre} {p.sku ? `(${p.sku})` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="text-xs text-gray-500 block mb-1">Fecha del conteo *</label>
+        <input
+          type="date"
+          value={form.fecha}
+          onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+          className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+    </div>
+
+    <div className="grid grid-cols-3 gap-4">
+      <div className="border border-emerald-200 rounded-xl p-3 bg-emerald-50">
+        <label className="text-xs font-semibold text-emerald-800 block mb-1">✅ Disponible *</label>
+        <p className="text-xs text-gray-500 mb-1">
+          En almacén. <span className="text-emerald-700 font-medium">Guarda historial.</span>
+        </p>
+        <input
+          type="number"
+          value={form.disponible}
+          onChange={(e) => setForm({ ...form, disponible: e.target.value })}
+          placeholder="0"
+          min="0"
+          className="w-full border border-emerald-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        />
+      </div>
+
+      <div className="border border-blue-200 rounded-xl p-3 bg-blue-50">
+        <label className="text-xs font-semibold text-blue-800 block mb-1">🚚 En Tránsito</label>
+        <p className="text-xs text-gray-500 mb-1">
+          Envío confirmado. <span className="text-blue-700 font-medium">Reemplaza anterior.</span>
+        </p>
+        <input
+          type="number"
+          value={form.en_transito}
+          onChange={(e) => setForm({ ...form, en_transito: e.target.value })}
+          placeholder="Opcional"
+          min="0"
+          className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+        />
+      </div>
+
+      <div className="border border-amber-200 rounded-xl p-3 bg-amber-50">
+        <label className="text-xs font-semibold text-amber-800 block mb-1">📋 Ordenado</label>
+        <p className="text-xs text-gray-500 mb-1">
+          Sin confirmación. <span className="text-amber-700 font-medium">Reemplaza anterior.</span>
+        </p>
+        <input
+          type="number"
+          value={form.ordenado}
+          onChange={(e) => setForm({ ...form, ordenado: e.target.value })}
+          placeholder="Opcional"
+          min="0"
+          className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+        />
+      </div>
+    </div>
+
+    <div>
+      <label className="text-xs text-gray-500 block mb-1">Notas (opcional)</label>
+      <input
+        value={form.notas}
+        onChange={(e) => setForm({ ...form, notas: e.target.value })}
+        placeholder="Ej. Conteo físico semanal, ajuste por merma..."
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+      />
+    </div>
+
+    <button
+      onClick={guardarInventario}
+      disabled={loading}
+      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-medium py-3 rounded-xl text-sm transition-colors"
+    >
+      {guardado ? '✓ Inventario registrado' : loading ? 'Guardando...' : 'Registrar inventario'}
+    </button>
+  </div>
+)}
         {/* Subir archivo */}
         {modo === 'excel' && (
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">

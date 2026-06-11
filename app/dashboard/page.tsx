@@ -2,13 +2,77 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useRouter } from 'next/navigation'
+import type { User } from '@supabase/supabase-js'
 
-const tabs = ['Inicio', 'Etapas', 'Plan de acción', 'KPIs', 'Entregables', 'Catálogo', 'Ventas', 'Inventario', 'Precios', 'Matriz', 'Asistente IA']
+type Cliente = {
+  id: string
+  empresa: string
+  estado?: string | null
+  [key: string]: any
+}
+
+type Proyecto = {
+  id: string
+  cliente_id?: string | null
+  etapa_actual: number
+  semana_actual: number
+  total_semanas: number
+  avance_pct: number
+  fecha_inicio: string
+  fecha_estimada_fin?: string | null
+  [key: string]: any
+}
+
+type PaiAccion = {
+  id: string
+  accion: string
+  responsable?: string | null
+  completada: boolean
+  [key: string]: any
+}
+
+type Kpi = {
+  id?: string
+  area: string
+  nombre: string
+  valor_actual: number
+  valor_base: number
+  meta: number
+  [key: string]: any
+}
+
+type Entregable = {
+  id?: string
+  nombre: string
+  tipo?: string | null
+  fecha_entrega?: string | null
+  entregado: boolean
+  [key: string]: any
+}
+
+type TabInicioProps = {
+  proyecto: Proyecto
+}
+
+type ProyectoIdProps = {
+  proyectoId: string
+}
+
+type TabAsistenteProps = {
+  proyecto: Proyecto
+  cliente: Cliente
+}
+
+type TabRedirigirProps = {
+  url: string
+}
+
+const tabs = ['Inicio', 'Etapas', 'Plan de acción', 'KPIs', 'Entregables', 'Catálogo', 'Ventas', 'inventario', 'Precios', 'Matriz', 'Asistente IA']
 
 export default function Dashboard() {
-  const [user, setUser] = useState(null)
-  const [proyecto, setProyecto] = useState(null)
-  const [cliente, setCliente] = useState(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [proyecto, setProyecto] = useState<Proyecto | null>(null)
+  const [cliente, setCliente] = useState<Cliente | null>(null)
   const [tab, setTab] = useState('Inicio')
   const router = useRouter()
 
@@ -26,7 +90,7 @@ export default function Dashboard() {
         .select('*')
         .limit(1)
         .single()
-      setCliente(clienteData)
+      setCliente((clienteData as Cliente) || null)
 
       if (clienteData) {
         const { data: proyectoData } = await supabase
@@ -35,7 +99,7 @@ export default function Dashboard() {
           .eq('cliente_id', clienteData.id)
           .limit(1)
           .single()
-        setProyecto(proyectoData)
+        setProyecto((proyectoData as Proyecto) || null)
       }
     }
     cargarDatos()
@@ -102,7 +166,7 @@ export default function Dashboard() {
         {tab === 'Entregables' && <TabEntregables proyectoId={proyecto.id} />}
         {tab === 'Catálogo'   && <TabRedirigir url="/dashboard/productos" />}
         {tab === 'Ventas'     && <TabVentas />}
-        {tab === 'Inventario' && <TabRedirigir url="/dashboard/inventario" />}
+        {tab === 'inventario' && <TabRedirigir url="/dashboard/inventario" />}
         {tab === 'Precios'    && <TabRedirigir url="/dashboard/precios" />}
         {tab === 'Matriz'     && <TabRedirigir url="/dashboard/matriz" />}
         {tab === 'Asistente IA' && <TabAsistente proyecto={proyecto} cliente={cliente} />}
@@ -111,7 +175,7 @@ export default function Dashboard() {
   )
 }
 
-function TabInicio({ proyecto }) {
+function TabInicio({ proyecto }: TabInicioProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-4">
@@ -187,8 +251,8 @@ function TabEtapas() {
   )
 }
 
-function TabPAI({ proyectoId }) {
-  const [acciones, setAcciones] = useState([])
+function TabPAI({ proyectoId }: ProyectoIdProps) {
+  const [acciones, setAcciones] = useState<PaiAccion[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -197,12 +261,12 @@ function TabPAI({ proyectoId }) {
       .eq('proyecto_id', proyectoId)
       .order('completada', { ascending: true })
       .then(({ data }) => {
-        setAcciones(data || [])
+        setAcciones((data || []) as PaiAccion[])
         setLoading(false)
       })
   }, [proyectoId])
 
-  const toggle = async (id, actual) => {
+  const toggle = async (id: string, actual: boolean) => {
     await supabase.from('pai_acciones').update({ completada: !actual }).eq('id', id)
     setAcciones(prev => prev.map(a => a.id === id ? {...a, completada: !actual} : a))
   }
@@ -234,8 +298,8 @@ function TabPAI({ proyectoId }) {
   )
 }
 
-function TabKPIs({ proyectoId }) {
-  const [kpis, setKpis] = useState([])
+function TabKPIs({ proyectoId }: ProyectoIdProps) {
+  const [kpis, setKpis] = useState<Kpi[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -243,7 +307,7 @@ function TabKPIs({ proyectoId }) {
       .select('*')
       .eq('proyecto_id', proyectoId)
       .then(({ data }) => {
-        setKpis(data || [])
+        setKpis((data || []) as Kpi[])
         setLoading(false)
       })
   }, [proyectoId])
@@ -281,8 +345,8 @@ function TabKPIs({ proyectoId }) {
   )
 }
 
-function TabEntregables({ proyectoId }) {
-  const [items, setItems] = useState([])
+function TabEntregables({ proyectoId }: ProyectoIdProps) {
+  const [items, setItems] = useState<Entregable[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -291,7 +355,7 @@ function TabEntregables({ proyectoId }) {
       .eq('proyecto_id', proyectoId)
       .order('entregado', { ascending: false })
       .then(({ data }) => {
-        setItems(data || [])
+        setItems((data || []) as Entregable[])
         setLoading(false)
       })
   }, [proyectoId])
@@ -317,14 +381,14 @@ function TabEntregables({ proyectoId }) {
   )
 }
 
-function TabAsistente({ proyecto, cliente }) {
+function TabAsistente({ proyecto, cliente }: TabAsistenteProps) {
   const [pregunta, setPregunta] = useState('')
   const [respuesta, setRespuesta] = useState('')
   const [loading, setLoading] = useState(false)
 
   const sugerencias = ['¿Qué es el PAI?', '¿Cómo funciona el COPAC?', '¿Qué sigue en mi proceso?', '¿Qué es el Manual PASER?']
 
-  const preguntar = async (texto) => {
+  const preguntar = async (texto?: string) => {
     const q = texto || pregunta
     if (!q.trim()) return
     setLoading(true)
@@ -375,7 +439,7 @@ function TabAsistente({ proyecto, cliente }) {
     </div>
   )
 }
-function TabRedirigir({ url }) {
+function TabRedirigir({ url }: TabRedirigirProps) {
   const router = useRouter()
   useEffect(() => { router.push(url) }, [])
   return null

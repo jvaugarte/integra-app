@@ -10,21 +10,76 @@ const normalizar = (s: string) => s.toLowerCase().trim()
 const TIPOS_PROMO = ['Descuento %', 'Descuento monto fijo', '2x1', '3x2', 'Regalo con compra', 'Producto cruzado', 'Precio especial', 'Liquidación', 'Otro']
 const TIPOS_PUB   = ['Facebook Ads', 'Instagram Ads', 'Google Ads', 'TikTok Ads', 'Influencer', 'Email marketing', 'WhatsApp', 'Volante / impreso', 'Radio', 'Otro']
 
+type Producto = {
+  id: string
+  nombre: string
+  sku?: string | null
+  categoria?: string | null
+}
+
+type Categoria = {
+  id: string
+  nombre: string
+}
+
+type RegistroPromo = {
+  id: string
+  proyecto_id?: string | null
+  nombre?: string | null
+  fecha_inicio?: string | null
+  fecha_fin?: string | null
+  periodo_tipo?: string | null
+  alcance_tipo?: 'producto' | 'categoria' | 'general' | string | null
+  producto_id?: string | null
+  producto_cruzado_id?: string | null
+  categoria?: string | null
+  tiene_promo?: boolean | null
+  tipo_promo?: string | null
+  descuento_pct?: number | null
+  monto_descuento?: number | null
+  detalle_promo?: string | null
+  tiene_publicidad?: boolean | null
+  tipo_publicidad?: string | null
+  costo_publicidad?: number | null
+  alcance_estimado?: number | null
+  detalle_publicidad?: string | null
+  activo?: boolean | null
+  productos?: {
+    nombre?: string | null
+    sku?: string | null
+  } | null
+  productos_cruzado?: {
+    nombre?: string | null
+    sku?: string | null
+  } | null
+}
+
+type ExcelRow = Record<string, any>
+
+type ProgresoCarga = {
+  activo: boolean
+  total: number
+  cargadas: number
+  porcentaje: number
+  mensaje: string
+}
+
+
 export default function Promociones() {
-  const [productos, setProductos] = useState([])
-  const [categorias, setCategorias] = useState([])
-  const [proyectoId, setProyectoId] = useState(null)
-  const [registros, setRegistros] = useState([])
+  const [productos, setProductos] = useState<Producto[]>([])
+  const [categorias, setCategorias] = useState<Categoria[]>([])
+  const [proyectoId, setProyectoId] = useState<string | null>(null)
+  const [registros, setRegistros] = useState<RegistroPromo[]>([])
   const [loading, setLoading] = useState(false)
   const [guardado, setGuardado] = useState(false)
   const [modo, setModo] = useState('manual')
-  const [preview, setPreview] = useState([])
-  const [pendingRows, setPendingRows] = useState([])
+  const [preview, setPreview] = useState<ExcelRow[]>([])
+  const [pendingRows, setPendingRows] = useState<ExcelRow[]>([])
   const [duplicados, setDuplicados] = useState<string[]>([])
   const [showConfirm, setShowConfirm] = useState(false)
   const [erroresImportacion, setErroresImportacion] = useState<string[]>([])
   const [showErrores, setShowErrores] = useState(false)
-  const [progresoCarga, setProgresoCarga] = useState({
+  const [progresoCarga, setProgresoCarga] = useState<ProgresoCarga>({
     activo: false, total: 0, cargadas: 0, porcentaje: 0, mensaje: '',
   })
   const [filtroTipo, setFiltroTipo] = useState<'todos'|'promo'|'publicidad'>('todos')
@@ -58,7 +113,7 @@ export default function Promociones() {
     cargarDatos()
   }, [])
 
-  async function cargarDatos(pid?: string) {
+  async function cargarDatos(pid?: string | null) {
     const { data: cliente } = await supabase.from('clientes').select('id').limit(1).single()
     if (!cliente) return
     const { data: proyecto } = await supabase.from('proyectos').select('id').eq('cliente_id', cliente.id).limit(1).single()
@@ -68,21 +123,18 @@ export default function Promociones() {
 
     const { data: prods } = await supabase.from('productos').select('id, nombre, sku, categoria')
       .eq('proyecto_id', idProyecto).eq('activo', true).order('nombre')
-    setProductos(prods || [])
+    setProductos((prods || []) as Producto[])
 
     const { data: cats } = await supabase.from('categorias').select('id, nombre')
       .eq('proyecto_id', idProyecto).order('nombre')
-    setCategorias(cats || [])
+    setCategorias((cats || []) as Categoria[])
 
     const { data: regs } = await supabase.from('promociones_publicidad')
-  .select('*, productos!promociones_publicidad_producto_id_fkey(nombre, sku), productos_cruzado:productos!promociones_publicidad_producto_cruzado_id_fkey(nombre, sku)')
-  .eq('proyecto_id', idProyecto)
-  .eq('activo', true)
-  .order('fecha_inicio', { ascending: false })
+      .select('*, productos!promociones_publicidad_producto_id_fkey(nombre, sku), productos_cruzado:productos!promociones_publicidad_producto_cruzado_id_fkey(nombre, sku)')
       .eq('proyecto_id', idProyecto)
       .eq('activo', true)
       .order('fecha_inicio', { ascending: false })
-    setRegistros(regs || [])
+    setRegistros((regs || []) as RegistroPromo[])
   }
 
   async function guardarRegistro() {
@@ -185,7 +237,7 @@ export default function Promociones() {
 
  
     const hDatos = wsDatos.getRow(1)
-    hDatos.eachCell(cell => {
+    hDatos.eachCell((cell: any) => {
       cell.font = fAzulOsc; cell.fill = fillAzulOsc
       cell.alignment = center
       cell.border = { bottom: { style: 'medium', color: { argb: 'FF' + AZUL_MED } } }
@@ -203,7 +255,7 @@ export default function Promociones() {
     ejemplosDatos.forEach((fila, i) => {
       const row = wsDatos.addRow(fila)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty: true }, cell => {
+      row.eachCell({ includeEmpty: true }, (cell: any) => {
         cell.font = fNormal; cell.fill = fill; cell.alignment = left
       })
       row.height = 20
@@ -213,9 +265,9 @@ export default function Promociones() {
     const ws = wb.addWorksheet('Instrucciones')
     ws.columns = [{ width: 24 }, { width: 16 }, { width: 14 }, { width: 38 }, { width: 28 }]
     const addRow = (v: any[], h = 18) => { const row = ws.addRow(v); row.height = h; return row }
-    const merge  = (r1, c1, r2, c2) => ws.mergeCells(r1, c1, r2, c2)
-    const styleRow = (row, font, fill, align = center) =>
-      row.eachCell({ includeEmpty: true }, (cell) => { cell.font = font; cell.fill = fill; cell.alignment = align })
+    const merge  = (r1: any, c1: any, r2: any, c2: any) => ws.mergeCells(r1, c1, r2, c2)
+    const styleRow = (row: any, font: any, fill: any, align: any = center) =>
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = font; cell.fill = fill; cell.alignment = align })
     let r = 1
 
     const titulo = addRow(['📣  GUÍA DE CARGA DE PROMOCIONES Y PUBLICIDAD — INTEGRA'], 30)
@@ -234,7 +286,7 @@ export default function Promociones() {
     diff.forEach((fila, i) => {
       const row = addRow(fila, 44); merge(r,3,r,4)
       const fill = i === 0 ? fillAmber : fillRosa
-      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      row.eachCell({ includeEmpty: true }, (cell: any, colNum: any) => {
         cell.font = colNum === 1 ? { bold:true, size:10, color:{argb:'FF1a2e4a'}, name:'Arial' } : fNormal
         cell.fill = fill; cell.alignment = { ...left, wrapText: true }
       }); r++
@@ -266,7 +318,7 @@ export default function Promociones() {
     cols.forEach((fila, i) => {
       const row = addRow(fila, 22)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty: true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} }); r++
+      row.eachCell({ includeEmpty: true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = {...left, wrapText:true} }); r++
     })
     addRow([],6); r++
 
@@ -288,7 +340,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
     reglas.forEach((fila, i) => {
       const row = addRow(fila, 30); merge(r,2,r,5)
       const fill = i % 2 === 0 ? fillVerdeCl : fillGris
-      row.eachCell({ includeEmpty: true }, (cell, colNum) => {
+      row.eachCell({ includeEmpty: true }, (cell: any, colNum: any) => {
         cell.font = colNum === 1 ? { bold:true, size:10, color:{argb:'FF'+AZUL_OSC}, name:'Arial' } : fNormal
         cell.fill = fill; cell.alignment = left
       }); r++
@@ -298,7 +350,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
     const wsRef = wb.addWorksheet('Referencia')
     wsRef.columns = [{ width: 25 }, { width: 30 }, { width: 25 }, { width: 30 }]
     const addRowRef = (v: any[], h = 18) => { const row = wsRef.addRow(v); row.height = h; return row }
-    const mergeRef  = (r1, c1, r2, c2) => wsRef.mergeCells(r1, c1, r2, c2)
+    const mergeRef  = (r1: any, c1: any, r2: any, c2: any) => wsRef.mergeCells(r1, c1, r2, c2)
     let rr = 1
 
     const tituloRef = addRowRef(['📋  VALORES VÁLIDOS — PROMOCIONES Y PUBLICIDAD'], 28)
@@ -311,7 +363,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
     mergeRef(rr,1,rr,4); sTipoPromo.getCell(1).font = fAzulOsc; sTipoPromo.getCell(1).fill = fillAmber
     sTipoPromo.getCell(1).alignment = left; rr++
     const hPromo = addRowRef(['Tipo_Promo', 'Descripción', 'Impacta margen', ''], 20)
-    mergeRef(rr,3,rr,4); hPromo.eachCell({ includeEmpty:true }, cell => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
+    mergeRef(rr,3,rr,4); hPromo.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
     const tiposPromoDesc = [
       ['Descuento %',        'Porcentaje de descuento sobre el precio de lista',  'Sí — reduce ingreso'],
       ['Descuento monto fijo','Descuento en pesos sobre el precio de lista',       'Sí — reduce ingreso'],
@@ -327,7 +379,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
       const row = addRowRef([fila[0], fila[1], fila[2], ''], 20)
       mergeRef(rr,3,rr,4)
       const fill = i % 2 === 0 ? fillAmber : fillGris
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
     })
     addRowRef([],6); rr++
 
@@ -336,7 +388,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
     mergeRef(rr,1,rr,4); sTipoPub.getCell(1).font = fAzulOsc; sTipoPub.getCell(1).fill = fillRosa
     sTipoPub.getCell(1).alignment = left; rr++
     const hPub = addRowRef(['Tipo_Publicidad', 'Descripción', 'Tipo de gasto', ''], 20)
-    mergeRef(rr,3,rr,4); hPub.eachCell({ includeEmpty:true }, cell => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
+    mergeRef(rr,3,rr,4); hPub.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
     const tiposPubDesc = [
       ['Facebook Ads',    'Anuncios pagados en Facebook e Instagram',         'Digital — pago por resultado'],
       ['Instagram Ads',   'Anuncios específicos de Instagram',                'Digital — pago por resultado'],
@@ -353,7 +405,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
       const row = addRowRef([fila[0], fila[1], fila[2], ''], 20)
       mergeRef(rr,3,rr,4)
       const fill = i % 2 === 0 ? fillRosa : fillGris
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
     })
     addRowRef([],6); rr++
 
@@ -362,12 +414,12 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
     mergeRef(rr,1,rr,4); sSKU.getCell(1).font = fAzulOsc; sSKU.getCell(1).fill = fillAzulOsc
     sSKU.getCell(1).alignment = left; rr++
     const hSKU = addRowRef(['SKU', 'Nombre del producto', 'Categoría', ''], 20)
-    mergeRef(rr,3,rr,4); hSKU.eachCell({ includeEmpty:true }, cell => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
+    mergeRef(rr,3,rr,4); hSKU.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fAzulMed; cell.fill = fillAzulMed; cell.alignment = center }); rr++
     productos.forEach((p, i) => {
       const row = addRowRef([p.sku || '—', p.nombre, p.categoria || '—', ''], 18)
       mergeRef(rr,3,rr,4)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
     })
     addRowRef([],6); rr++
 
@@ -379,7 +431,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
       const row = addRowRef([c.nombre, '', '', ''], 18)
       mergeRef(rr,1,rr,4)
       const fill = i % 2 === 0 ? fillAzulClar : fillGris
-      row.eachCell({ includeEmpty:true }, cell => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
+      row.eachCell({ includeEmpty:true }, (cell: any) => { cell.font = fNormal; cell.fill = fill; cell.alignment = left }); rr++
     })
 
     const buffer = await wb.xlsx.writeBuffer()
@@ -389,16 +441,18 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
     URL.revokeObjectURL(url)
   }
 
-  async function leerArchivo(file) {
+  async function leerArchivo(file: File) {
     if (!proyectoId) return alert('Espera a que cargue el proyecto.')
     const XLSXModule = await import('xlsx')
     const XLSX = XLSXModule.default || XLSXModule
     const reader = new FileReader()
     reader.onload = async (e) => {
-      const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true })
+      const result = e.target?.result
+      if (!result) return
+      const wb = XLSX.read(result, { type: 'array', cellDates: true })
       const sheetName = wb.SheetNames.includes('Datos') ? 'Datos' : wb.SheetNames[0]
       const ws = wb.Sheets[sheetName]
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as ExcelRow[]
 
       const rowsFiltradas = rows.filter((row: any) => {
         const nombre = String(row.Nombre_Campaña || row['Nombre_Campaña'] || '').trim()
@@ -435,7 +489,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
           errores.push(`Fila "${nombre}": SKU_Producto requerido cuando Alcance_Tipo = producto`); continue
         }
         if (alcance === 'producto' && skuProd) {
-          const prod = productos.find(p => (p.sku || '').toLowerCase() === skuProd.toLowerCase())
+          const prod = productos.find((p) => (p.sku || '').toLowerCase() === skuProd.toLowerCase())
           if (!prod) { errores.push(`Fila "${nombre}": SKU_Producto no encontrado: ${skuProd}`); continue }
         }
         if (alcance === 'categoria' && !cat) {
@@ -465,7 +519,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
     reader.readAsArrayBuffer(file)
   }
 
-  async function importarRegistros(rows, erroresPrevios: string[] = []) {
+  async function importarRegistros(rows: ExcelRow[], erroresPrevios: string[] = []) {
     setLoading(true)
     setProgresoCarga({ activo: true, total: rows.length, cargadas: 0, porcentaje: 0, mensaje: 'Importando registros...' })
 
@@ -479,8 +533,8 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
       const skuCruz   = String(row.SKU_Cruzado    || '').trim()
       const cat       = String(row.Categoria      || '').trim()
 
-      const prod      = skuProd ? productos.find(p => (p.sku || '').toLowerCase() === skuProd.toLowerCase()) : null
-      const prodCruz  = skuCruz ? productos.find(p => (p.sku || '').toLowerCase() === skuCruz.toLowerCase()) : null
+      const prod      = skuProd ? productos.find((p) => (p.sku || '').toLowerCase() === skuProd.toLowerCase()) : null
+      const prodCruz  = skuCruz ? productos.find((p) => (p.sku || '').toLowerCase() === skuCruz.toLowerCase()) : null
 
       const normalizarFechaPromo = (valor: any): string => {
   if (!valor) return ''
@@ -581,7 +635,7 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
         <span className="text-gray-200">/</span>
         <button onClick={() => router.push('/dashboard/ventas')} className="text-xs text-gray-400 hover:text-gray-600">Ventas</button>
         <span className="text-gray-200">/</span>
-        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">Inventario</button>
+        <button onClick={() => router.push('/dashboard/inventario')} className="text-xs text-gray-400 hover:text-gray-600">inventario</button>
         <span className="text-gray-200">/</span>
         <p className="text-sm font-medium text-gray-900">Promociones y Publicidad</p>
       </div>
@@ -680,7 +734,19 @@ for (let rowNum = 9; rowNum <= 22; rowNum++) {
           <div className="bg-white rounded-xl border border-gray-100 p-5 space-y-4">
             <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-gray-900">Registrar promoción o publicidad</p>
-            <BorradoMasivo tabla="promociones_publicidad" proyectoId={proyectoId} productos={productos} campoFecha="fecha_inicio" onBorrado={() => cargarDatos(proyectoId)}/>
+            {proyectoId && (
+              <BorradoMasivo
+                tabla="promociones_publicidad"
+                proyectoId={proyectoId}
+                productos={productos.map((p) => ({
+                  id: p.id,
+                  nombre: p.nombre,
+                  sku: p.sku ?? undefined,
+                }))}
+                campoFecha="fecha_inicio"
+                onBorrado={() => cargarDatos(proyectoId)}
+              />
+            )}
             </div>
 
             {/* Tipo de registro */}
