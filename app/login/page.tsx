@@ -8,6 +8,14 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Estado para el flujo de recuperación de contraseña
+  const [modoRecuperar, setModoRecuperar] = useState(false)
+  const [emailRecuperar, setEmailRecuperar] = useState('')
+  const [enviandoCorreo, setEnviandoCorreo] = useState(false)
+  const [mensajeRecuperar, setMensajeRecuperar] = useState('')
+  const [errorRecuperar, setErrorRecuperar] = useState('')
+
   const router = useRouter()
 
   const handleLogin = async () => {
@@ -20,6 +28,29 @@ export default function Login() {
       router.push('/dashboard')
     }
     setLoading(false)
+  }
+
+  const enviarCorreoRecuperacion = async () => {
+    setErrorRecuperar('')
+    setMensajeRecuperar('')
+
+    if (!emailRecuperar.trim()) {
+      setErrorRecuperar('Escribe tu correo electrónico.')
+      return
+    }
+
+    setEnviandoCorreo(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(emailRecuperar, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    setEnviandoCorreo(false)
+
+    if (error) {
+      setErrorRecuperar(`No se pudo enviar el correo: ${error.message}`)
+      return
+    }
+
+    setMensajeRecuperar('Te enviamos un correo con el enlace para restablecer tu contraseña. Revisa tu bandeja de entrada y la carpeta de spam.')
   }
 
   return (
@@ -35,51 +66,106 @@ export default function Login() {
           </div>
         </div>
 
-        <h2 className="text-2xl font-semibold text-gray-900 mb-6">Iniciar sesión</h2>
+        {!modoRecuperar ? (
+          <>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-6">Iniciar sesión</h2>
 
-        {error && (
-          <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-3 mb-4">
-            {error}
-          </div>
+            {error && (
+              <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-3 mb-4">
+                {error}
+              </div>
+            )}
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Correo</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="tu@correo.com"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Contraseña</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogin}
+              disabled={loading}
+              className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-medium py-3 px-4 rounded-xl transition-colors"
+            >
+              {loading ? 'Entrando...' : 'Entrar'}
+            </button>
+
+            <button
+              onClick={() => {
+                setModoRecuperar(true)
+                setError('')
+              }}
+              className="w-full mt-3 text-sm text-gray-500 hover:text-emerald-700 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:text-emerald-700 rounded-lg py-1 font-medium transition-colors"
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 className="text-2xl font-semibold text-gray-900 mb-2">Recuperar contraseña</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Escribe tu correo y te enviaremos un enlace seguro para restablecer tu contraseña.
+            </p>
+
+            {errorRecuperar && (
+              <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-3 mb-4">
+                {errorRecuperar}
+              </div>
+            )}
+            {mensajeRecuperar && (
+              <div className="bg-emerald-50 border border-emerald-100 text-emerald-700 text-sm rounded-xl px-4 py-3 mb-4">
+                {mensajeRecuperar}
+              </div>
+            )}
+
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Correo</label>
+              <input
+                type="email"
+                value={emailRecuperar}
+                onChange={e => setEmailRecuperar(e.target.value)}
+                placeholder="tu@correo.com"
+                className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+
+            <button
+              onClick={enviarCorreoRecuperacion}
+              disabled={enviandoCorreo}
+              className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-medium py-3 px-4 rounded-xl transition-colors"
+            >
+              {enviandoCorreo ? 'Enviando...' : 'Enviar enlace de recuperación'}
+            </button>
+
+            <button
+              onClick={() => {
+                setModoRecuperar(false)
+                setErrorRecuperar('')
+                setMensajeRecuperar('')
+              }}
+              className="w-full mt-3 text-sm text-gray-500 hover:text-emerald-700 hover:underline focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:text-emerald-700 rounded-lg py-1 font-medium transition-colors"
+            >
+              ← Volver al inicio de sesión
+            </button>
+          </>
         )}
-
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Correo</label>
-            <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="tu@correo.com"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1">Contraseña</label>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-          </div>
-        </div>
-
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          className="w-full mt-6 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-medium py-3 px-4 rounded-xl transition-colors"
-        >
-          {loading ? 'Entrando...' : 'Entrar'}
-        </button>
-
-        <button
-  onClick={() => router.push('/reset-password')}
-  className="w-full mt-3 text-sm text-emerald-700 hover:text-emerald-800 font-medium"
->
-  ¿Olvidaste tu contraseña?
-</button>
 
         <p className="text-center text-xs text-gray-400 mt-6">
           INTEGRA Inteligencia Integral © 2025
