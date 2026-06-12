@@ -74,6 +74,13 @@ export default function Login() {
           {loading ? 'Entrando...' : 'Entrar'}
         </button>
 
+        <button
+  onClick={() => router.push('/reset-password')}
+  className="w-full mt-3 text-sm text-emerald-700 hover:text-emerald-800 font-medium"
+>
+  ¿Olvidaste tu contraseña?
+</button>
+
         <p className="text-center text-xs text-gray-400 mt-6">
           INTEGRA Inteligencia Integral © 2025
         </p>
